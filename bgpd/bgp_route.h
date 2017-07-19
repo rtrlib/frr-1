@@ -178,6 +178,9 @@ struct bgp_info {
 
 	u_short instance;
 
+	/*RPKI Route origin validation status*/
+	u_char rpki_validation_status;
+
 	/* Addpath identifiers */
 	u_int32_t addpath_rx_id;
 	u_int32_t addpath_tx_id;
