@@ -43,6 +43,7 @@
 #include "rtrlib/rtr_mgr.h"
 #include "rtrlib/lib/ip.h"
 #include "rtrlib/transport/tcp/tcp_transport.h"
+#include "rtrlib/spki/hashtable/tommyds-1.8/tommylist.h"
 #if defined(FOUND_SSH)
 #include "rtrlib/transport/ssh/ssh_transport.h"
 #endif
@@ -170,7 +171,6 @@ static int rpki_config_write(struct vty *vty);
 static void overwrite_exit_commands(void);
 static cache_group *find_cache_group(int preference_value);
 static cache_group *create_cache_group(int preference_value);
-void free_rtr_mgr_groups(struct rtr_mgr_group *group, int length);
 struct rtr_mgr_group *get_rtr_mgr_groups(void);
 unsigned int get_number_of_cache_groups(void);
 void delete_cache_group_list(void);
@@ -333,18 +333,6 @@ static void list_all_nodes(struct vty *vty, const struct trie_node *node,
 	if (node->rchild != NULL) {
 		list_all_nodes(vty, node->rchild, count);
 	}
-}
-
-void free_rtr_mgr_groups(struct rtr_mgr_group *group, int length)
-{
-	int i;
-	struct rtr_mgr_group *group_temp = group;
-	for (i = 0; i < length; ++i) {
-		XFREE(MTYPE_BGP_RPKI_CACHE, group_temp->sockets);
-		group_temp++;
-	}
-
-	XFREE(MTYPE_BGP_RPKI_CACHE_GROUP, group);
 }
 
 struct rtr_mgr_group *get_rtr_mgr_groups()
@@ -606,36 +594,31 @@ void rpki_reset_session(void)
 void rpki_finish(void)
 {
 	RPKI_DEBUG("Stopping");
-	struct rtr_mgr_group *groups;
-	unsigned int length;
-	groups = rtr_config->groups;
-	length = rtr_config->len;
 
 	rtr_mgr_stop(rtr_config);
 	rtr_mgr_free(rtr_config);
 	rtr_is_running = 0;
-	free_rtr_mgr_groups(groups, length);
 	delete_cache_group_list();
 }
 
-int rpki_get_connected_group()
+struct rtr_mgr_group* rpki_get_connected_group()
 {
-	unsigned int i;
-	for (i = 0; i < rtr_config->len; i++) {
-		if (rtr_config->groups[i].status == RTR_MGR_ESTABLISHED
-		    || rtr_config->groups[i].status == RTR_MGR_CONNECTING) {
-			return rtr_config->groups[i].preference;
-		}
+	tommy_node* head = tommy_list_head(&rtr_config->groups);
+	struct rtr_mgr_group_node* group_node;
+
+	if (head == 0) {
+		return NULL;
 	}
-	return -1;
+
+	group_node = head->data;
+	return group_node->group;
 }
 
 void rpki_print_prefix_table(struct vty *vty)
 {
 	unsigned int number_of_ipv4_prefixes = 0;
 	unsigned int number_of_ipv6_prefixes = 0;
-	struct pfx_table *pfx_table =
-		rtr_config->groups[0].sockets[0]->pfx_table;
+	struct pfx_table *pfx_table = rpki_get_connected_group()->sockets[0]->pfx_table;
 	vty_out(vty, "RPKI/RTR prefix table\n");
 	vty_out(vty, "%-40s %s  %s \n", "Prefix", "Prefix Length", "Origin-AS");
 	if (pfx_table->ipv4 != NULL) {
@@ -1328,15 +1311,15 @@ DEFUN (show_rpki_cache_connection,
 	if (rpki_is_synchronized()) {
 		struct listnode *cache_group_node;
 		cache_group *cache_group;
-		int group = rpki_get_connected_group();
-		if (group == -1) {
+		struct rtr_mgr_group* group = rpki_get_connected_group();
+		if (group == NULL) {
 			vty_out(vty, "Cannot find a connected group. \n");
 			return CMD_SUCCESS;
 		}
-		vty_out(vty, "Connected to group %d \n", group);
+		vty_out(vty, "Connected to group %d \n", group->preference);
 		for (ALL_LIST_ELEMENTS_RO(cache_group_list, cache_group_node,
 					  cache_group)) {
-			if (cache_group->preference_value == group) {
+			if (cache_group->preference_value == group->preference) {
 				struct list *cache_list =
 					cache_group->cache_config_list;
 				struct listnode *cache_node;

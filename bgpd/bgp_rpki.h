@@ -81,6 +81,6 @@ int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 int rpki_is_route_map_active(void);
 void rpki_set_route_map_active(int activate);
 void rpki_print_prefix_table(struct vty *vty);
-int rpki_get_connected_group(void);
+struct rtr_mgr_group* rpki_get_connected_group(void);
 void rpki_revalidate_all_routes(struct bgp *bgp, afi_t afi);
 #endif /* BGP_RPKI_H_ */
