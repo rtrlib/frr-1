@@ -54,6 +54,9 @@
 
 #include "bgp_rpki_clippy.c"
 
+DEFINE_MTYPE_STATIC(BGPD, BGP_RPKI_CACHE, "BGP RPKI Cache server")
+DEFINE_MTYPE_STATIC(BGPD, BGP_RPKI_CACHE_GROUP, "BGP RPKI Cache server group")
+
 /**********************************/
 /** Declaration of variables     **/
 /**********************************/
@@ -93,6 +96,23 @@ typedef struct {
 	struct rtr_socket *rtr_socket;
 	char delete_flag;
 } cache;
+
+static void* rpki_malloc_wrapper(size_t size)
+{
+	return XMALLOC(MTYPE_BGP_RPKI_CACHE, size);
+}
+
+static void* rpki_realloc_wrapper(void *ptr, size_t size)
+{
+	return XREALLOC(MTYPE_BGP_RPKI_CACHE, ptr, size);
+}
+
+static void rpki_free_wrapper(void *ptr)
+{
+	XFREE(MTYPE_BGP_RPKI_CACHE, ptr);
+}
+
+
 static route_map_result_t route_match_rpki(void *rule, struct prefix *prefix,
 					   route_map_object_t type,
 					   void *object)
@@ -528,6 +548,10 @@ static int bgp_rpki_init(struct thread_master *master)
 
 static int bgp_rpki_module_init(void)
 {
+	lrtr_set_malloc(rpki_malloc_wrapper);
+	lrtr_set_realloc(rpki_realloc_wrapper);
+	lrtr_set_free(rpki_free_wrapper);
+
 	hook_register(frr_late_init, bgp_rpki_init);
 	return 0;
 }
