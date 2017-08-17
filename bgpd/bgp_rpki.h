@@ -44,6 +44,7 @@ int rpki_debug;
 /**********************************/
 #define POLLING_PERIOD_DEFAULT 3600
 #define EXPIRE_INTERVAL_DEFAULT 7200
+#define RETRY_INTERVAL_DEFAULT 600
 #define TIMEOUT_DEFAULT 600
 #define INITIAL_SYNCHRONISATION_TIMEOUT_DEFAULT 30
 #define CALLBACK_TIMEOUT 10
@@ -54,9 +55,9 @@ int rpki_debug;
 /**********************************/
 /** Declaration of variables     **/
 /**********************************/
-struct list *cache_group_list;
 unsigned int polling_period;
 unsigned int expire_interval;
+unsigned int retry_interval;
 unsigned int timeout;
 unsigned int initial_synchronisation_timeout;
 int rpki_sync_socket_rtr;
@@ -66,7 +67,6 @@ int rpki_sync_socket_bgpd;
 /**********************************/
 /** Declaration of functions     **/
 /**********************************/
-void rpki_start(void);
 void rpki_reset_session(void);
 static int bgp_rpki_init(struct thread_master *master);
 static int bgp_rpki_module_init(void);
