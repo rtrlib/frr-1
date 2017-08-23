@@ -72,12 +72,11 @@ enum return_values { SUCCESS = 0, ERROR = -1 };
 
 struct cache {
        enum { TCP, SSH } type;
-
+       struct tr_socket *tr_socket;
        union {
                struct tr_tcp_config *tcp_config;
                struct tr_ssh_config *ssh_config;
        } tr_config;
-
        struct rtr_socket *rtr_socket;
        uint8_t preference;
 };
@@ -157,6 +156,7 @@ static void delete_cache(void *value);
 void install_cli_commands(void);
 static int rpki_config_write(struct vty *vty);
 static void overwrite_exit_commands(void);
+static void bgp_rpki_free_cache(struct cache *cache);
 struct rtr_mgr_group *get_rtr_mgr_groups(void);
 unsigned int get_number_of_cache_groups(void);
 //void delete_cache_group_list(void);
@@ -168,7 +168,7 @@ static int add_ssh_cache(const char *host,
 			 const char *server_pubkey_path,
 			 const uint8_t preference);
 //static struct list *create_cache_list(void);
-static struct rtr_socket *create_cache(struct tr_socket *tr_socket);
+static struct rtr_socket *create_rtr_socket(struct tr_socket *tr_socket);
 static struct cache *find_cache(const char *host, const char *port_string);
 static int add_tcp_cache(const char *host,
 			 const char *port,
@@ -193,16 +193,15 @@ static void print_record(const struct pfx_record *record, void *data);
 /** Implementation of public functions  **/
 /*****************************************/
 
-static struct rtr_socket *create_cache(struct tr_socket *tr_socket)
+static struct rtr_socket *create_rtr_socket(struct tr_socket *tr_socket)
 {
-	struct rtr_socket *rtr_socket_p;
-	if ((rtr_socket_p =
-		     XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct rtr_socket)))
-	    == NULL) {
+	struct rtr_socket *rtr_socket =
+		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct rtr_socket));
+	if (rtr_socket == NULL) {
 		return NULL;
 	}
-	rtr_socket_p->tr_socket = tr_socket;
-	return rtr_socket_p;
+	rtr_socket->tr_socket = tr_socket;
+	return rtr_socket;
 }
 
 static struct cache *find_cache(const char *host, const char *port_string)
@@ -311,7 +310,6 @@ struct rtr_mgr_group *get_rtr_mgr_groups()
 {
 	struct listnode *cache_node;
 	struct rtr_mgr_group *rtr_mgr_groups;
-	//struct rtr_mgr_group *loop_cache_pointer;
 	struct cache *cache;
 
 	int number_of_groups = listcount(cache_list);
@@ -329,48 +327,11 @@ struct rtr_mgr_group *get_rtr_mgr_groups()
 	size_t i = 0;
 
 	for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node, cache)) {
-		struct rtr_socket **sockets;
-		sockets = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct rtr_socket *));
-		if (sockets == NULL) {
-			return NULL;
-		}
-
-		sockets[0] = cache->rtr_socket;
-
-		rtr_mgr_groups[i].sockets = sockets;
+		rtr_mgr_groups[i].sockets = &(cache->rtr_socket);
 		rtr_mgr_groups[i].sockets_len = 1;
 		rtr_mgr_groups[i].preference = cache->preference;
 	}
 
-
-	/*loop_cache_pointer = rtr_mgr_groups;
-
-	for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node, cache)) {
-		int number_of_caches = listcount(cache_list);
-		if (number_of_caches == 0) {
-			break;
-		}
-		if ((loop_cache_pointer->sockets = XMALLOC(
-			     MTYPE_BGP_RPKI_CACHE,
-			     sizeof(struct rtr_socket *)))
-		    == NULL) {
-			return NULL;
-		}
-		loop_cache_pointer = loop_cache_pointer->sockets;
-
-		for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node, cache)) {
-			*loop_cache_pointer = cache->rtr_socket;
-			loop_cache_pointer++;
-		}
-		loop_group_pointer->sockets_len = number_of_caches;
-		loop_group_pointer->preference = cache->preference;
-		loop_group_pointer++;
-	}
-
-	if (loop_group_pointer == rtr_mgr_groups) {
-		// No caches were found in config file
-		return NULL;
-	}*/
 	return rtr_mgr_groups;
 }
 
@@ -511,7 +472,10 @@ static int bgp_rpki_init(struct thread_master *master)
 	//rpki_init_sync_socket();
 	rpki_debug = 0;
 	rtr_is_running = 0;
+
 	cache_list = list_new();
+	cache_list->del = &bgp_rpki_free_cache;
+
 	polling_period = POLLING_PERIOD_DEFAULT;
 	expire_interval = EXPIRE_INTERVAL_DEFAULT;
 	retry_interval = RETRY_INTERVAL_DEFAULT;
@@ -523,6 +487,19 @@ static int bgp_rpki_init(struct thread_master *master)
 	return 0;
 }
 
+static int bgp_rpki_fini()
+{
+	if (rtr_is_running) {
+		rtr_mgr_stop(rtr_config);
+		rtr_mgr_free(rtr_config);
+	}
+
+	list_delete(cache_list);
+
+
+	return 0;
+}
+
 static int bgp_rpki_module_init(void)
 {
 	lrtr_set_alloc_functions(rpki_malloc_wrapper,
@@ -530,6 +507,8 @@ static int bgp_rpki_module_init(void)
 				 rpki_free_wrapper);
 
 	hook_register(frr_late_init, bgp_rpki_init);
+	hook_register(frr_early_fini, &bgp_rpki_fini);
+
 	return 0;
 }
 
@@ -565,6 +544,8 @@ void rpki_start(void)
 		RPKI_DEBUG(
 			"Timeout expired! Proceeding without RPKI validation data.");
 	}
+
+	XFREE(MTYPE_BGP_RPKI_CACHE_GROUP, groups);
 }
 
 void rpki_reset_session(void)
@@ -792,21 +773,19 @@ int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 }*/
 
 
-static int add_cache(struct rtr_socket *socket, uint8_t preference)
+static int add_cache(struct cache *cache)
 {
+	uint8_t preference = cache->preference;
 	struct rtr_mgr_group group;
-	struct rtr_socket **sockets = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct rtr_socket));
-	sockets[0] = socket;
+
 	group.preference = preference;
 	group.sockets_len = 1;
-	group.sockets = sockets;
+	group.sockets = &(cache->rtr_socket);
 
-	if (!rtr_is_running) {
-		//TODO: init
-		return SUCCESS;
-	}
+	listnode_add(cache_list, cache);
 
-	if (rtr_mgr_add_group(rtr_config, &group) != RTR_SUCCESS) {
+	if (rtr_is_running &&
+	    rtr_mgr_add_group(rtr_config, &group) != RTR_SUCCESS) {
 		return ERROR;
 	}
 
@@ -820,10 +799,10 @@ static int add_tcp_cache(const char *host,
 {
 	struct tr_tcp_config *tcp_config =
 		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_tcp_config));
-	struct tr_socket *tr_socket_p;
+	struct tr_socket *tr_socket;
 	struct rtr_socket *rtr_socket;
 	struct cache *cache = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct cache));
-	if ((tr_socket_p =
+	if ((tr_socket =
 		     XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket)))
 	    == NULL) {
 		return ERROR;
@@ -833,20 +812,19 @@ static int add_tcp_cache(const char *host,
 	tcp_config->port = XSTRDUP(MTYPE_BGP_RPKI_CACHE, port);
 	tcp_config->bindaddr = NULL;
 
-	tr_tcp_init(tcp_config, tr_socket_p);
+	tr_tcp_init(tcp_config, tr_socket);
 
-	if ((rtr_socket = create_cache(tr_socket_p)) == NULL) {
+	if ((rtr_socket = create_rtr_socket(tr_socket)) == NULL) {
 		return ERROR;
 	}
 
 	cache->type = TCP;
+	cache->tr_socket = tr_socket;
 	cache->tr_config.tcp_config = tcp_config;
 	cache->rtr_socket = rtr_socket;
 	cache->preference = preference;
 
-	listnode_add(cache_list, cache);
-
-	return add_cache(rtr_socket, preference);
+	return add_cache(cache);
 }
 
 static int add_ssh_cache(const char *host,
@@ -858,13 +836,12 @@ static int add_ssh_cache(const char *host,
 			 const uint8_t preference)
 {
 
-	struct tr_ssh_config *ssh_config = XMALLOC(
-			MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_ssh_config));
+	struct tr_ssh_config *ssh_config =
+		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_ssh_config));
 	struct cache *cache = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct cache));
-	struct tr_socket *tr_socket_p;
+	struct tr_socket *tr_socket;
 	struct rtr_socket *rtr_socket;
-	if ((tr_socket_p =
-		     XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket)))
+	if ((tr_socket = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket)))
 	    == NULL) {
 		return ERROR;
 	}
@@ -878,22 +855,21 @@ static int add_ssh_cache(const char *host,
 			MTYPE_BGP_RPKI_CACHE, client_privkey_path);
 	ssh_config->server_hostkey_path = XSTRDUP(MTYPE_BGP_RPKI_CACHE, server_pubkey_path);
 
-	tr_ssh_init(ssh_config, tr_socket_p);
-	if ((rtr_socket = create_cache(tr_socket_p)) == NULL) {
+	tr_ssh_init(ssh_config, tr_socket);
+	if ((rtr_socket = create_rtr_socket(tr_socket)) == NULL) {
 		return ERROR;
 	}
 
 	cache->type = SSH;
+	cache->tr_socket = tr_socket;
 	cache->tr_config.ssh_config = ssh_config;
 	cache->rtr_socket = rtr_socket;
 	cache->preference = preference;
 
-	listnode_add(cache_list, cache);
-
-	return add_cache(rtr_socket, preference);
+	return add_cache(cache);
 }
 
-static void free_cache(struct cache *cache)
+static void bgp_rpki_free_cache(struct cache *cache)
 {
 	if (cache->type == TCP) {
 		XFREE(MTYPE_BGP_RPKI_CACHE,
@@ -912,7 +888,7 @@ static void free_cache(struct cache *cache)
 		      cache->tr_config.ssh_config->server_hostkey_path);
 		XFREE(MTYPE_BGP_RPKI_CACHE, cache->tr_config.ssh_config);
 	}
-	XFREE(MTYPE_BGP_RPKI_CACHE, cache->rtr_socket->tr_socket);
+	XFREE(MTYPE_BGP_RPKI_CACHE, cache->tr_socket);
 	XFREE(MTYPE_BGP_RPKI_CACHE, cache->rtr_socket);
 	XFREE(MTYPE_BGP_RPKI_CACHE, cache);
 }
@@ -1217,7 +1193,7 @@ DEFPY (no_rpki_cache,
 	}
 
 	listnode_delete(cache_list, cache);
-	free_cache(cache);
+	bgp_rpki_free_cache(cache);
 
 	return CMD_SUCCESS;
 }
@@ -1447,7 +1423,7 @@ void install_cli_commands()
 	install_element(VIEW_NODE, &rpki_cmd);
 
 	/* Install rpki polling period commands */
-	install_element(RPKI_NODE, &rpki_polling_period_cmd);
+	install_element(CONFIG_NODE, &rpki_polling_period_cmd);
 	install_element(CONFIG_NODE, &no_rpki_polling_period_cmd);
 
 	/* Install rpki expire interval commands */
