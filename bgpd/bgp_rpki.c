@@ -143,7 +143,7 @@ static void route_match_rpki_free(void *rule)
 	XFREE(MTYPE_ROUTE_MAP_COMPILED, rule);
 }
 
-struct cmd_node rpki_node = {RPKI_NODE, "%s(config-rpki)# ", 1, NULL, NULL};
+static struct cmd_node rpki_node = {RPKI_NODE, "%s(config-rpki)# ", 1};
 struct route_map_rule_cmd route_match_rpki_cmd = {"rpki", route_match_rpki,
 						  route_match_rpki_compile,
 						  route_match_rpki_free};
@@ -508,7 +508,6 @@ inline int rpki_is_running(void)
 
 static int bgp_rpki_init(struct thread_master *master)
 {
-	printf("Rpki command node id: %d\n", RPKI_NODE);
 	//rpki_init_sync_socket();
 	rpki_debug = 0;
 	rtr_is_running = 0;
@@ -586,7 +585,6 @@ void rpki_finish(void)
 	rtr_mgr_stop(rtr_config);
 	rtr_mgr_free(rtr_config);
 	rtr_is_running = 0;
-	//delete_cache_group_list();
 }
 
 struct rtr_mgr_group* rpki_get_connected_group()
@@ -703,22 +701,22 @@ int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 	switch (result) {
 	case BGP_PFXV_STATE_VALID:
 		RPKI_DEBUG(
-			"Validating Prefix %s/%hu from asn %u    Result: VALID",
+			"Validating Prefix %s/%hhu from asn %u    Result: VALID",
 			prefix_string, prefix->prefixlen, as_number);
 		return RPKI_VALID;
 	case BGP_PFXV_STATE_NOT_FOUND:
 		RPKI_DEBUG(
-			"Validating Prefix %s/%hu from asn %u    Result: NOT FOUND",
+			"Validating Prefix %s/%hhu from asn %u    Result: NOT FOUND",
 			prefix_string, prefix->prefixlen, as_number);
 		return RPKI_NOTFOUND;
 	case BGP_PFXV_STATE_INVALID:
 		RPKI_DEBUG(
-			"Validating Prefix %s/%hu from asn %u    Result: INVALID",
+			"Validating Prefix %s/%hhu from asn %u    Result: INVALID",
 			prefix_string, prefix->prefixlen, as_number);
 		return RPKI_INVALID;
 	default:
 		RPKI_DEBUG(
-			"Validating Prefix %s/%hu from asn %u    Result: CANNOT VALIDATE",
+			"Validating Prefix %s/%hhu from asn %u    Result: CANNOT VALIDATE",
 			prefix_string, prefix->prefixlen, as_number);
 		break;
 	}
@@ -793,34 +791,11 @@ int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 	}
 }*/
 
-/*static void delete_marked_cache_groups()
-{
-	cache_group *cache_group;
-	cache *cache;
-	struct listnode *cache_group_node, *cache_node;
-	struct listnode *next_node, *next_cache_node;
-	for (ALL_LIST_ELEMENTS(cache_group_list, cache_group_node, next_node,
-			       cache_group)) {
-		for (ALL_LIST_ELEMENTS(cache_group->cache_config_list,
-				       cache_node, next_cache_node, cache)) {
-			if (cache->delete_flag) {
-				listnode_delete(cache_group->cache_config_list,
-						cache);
-				delete_cache(cache);
-			}
-		}
-		if (listcount(cache_group->cache_config_list) == 0
-		    || cache_group->delete_flag) {
-			listnode_delete(cache_group_list, cache_group);
-			delete_cache_group(cache_group);
-		}
-	}
-}*/
 
 static int add_cache(struct rtr_socket *socket, uint8_t preference)
 {
 	struct rtr_mgr_group group;
-	struct rtr_socket *sockets[1];
+	struct rtr_socket **sockets = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct rtr_socket));
 	sockets[0] = socket;
 	group.preference = preference;
 	group.sockets_len = 1;
@@ -856,6 +831,7 @@ static int add_tcp_cache(const char *host,
 
 	tcp_config->host = XSTRDUP(MTYPE_BGP_RPKI_CACHE, host);
 	tcp_config->port = XSTRDUP(MTYPE_BGP_RPKI_CACHE, port);
+	tcp_config->bindaddr = NULL;
 
 	tr_tcp_init(tcp_config, tr_socket_p);
 
@@ -895,6 +871,7 @@ static int add_ssh_cache(const char *host,
 
 	ssh_config->port = port;
 	ssh_config->host = XSTRDUP(MTYPE_BGP_RPKI_CACHE, host);
+	ssh_config->bindaddr = NULL;
 
 	ssh_config->username = XSTRDUP(MTYPE_BGP_RPKI_CACHE, username);
 	ssh_config->client_privkey_path = XSTRDUP(
@@ -1175,8 +1152,9 @@ DEFPY (no_rpki_group,
 
 DEFPY (rpki_cache,
     rpki_cache_cmd,
-    "rpki cache <A.B.C.D|WORD> (1-255)$preference"
-    "<TCPPORT|(1-65535)$sshport SSH_UNAME SSH_PRIVKEY SSH_PUBKEY [SERVER_PUBKEY]> ",
+    "rpki cache <A.B.C.D|WORD> "
+    "<TCPPORT|(1-65535)$sshport SSH_UNAME SSH_PRIVKEY SSH_PUBKEY [SERVER_PUBKEY]> "
+    "preference (1-255)",
     RPKI_OUTPUT_STRING
     "Install a cache server to current group\n"
     "IP address of cache server\n Hostname of cache server\n"
@@ -1228,6 +1206,7 @@ DEFPY (no_rpki_cache,
 
 	if (cache == NULL) {
 		vty_out(vty, "Could not find cache %ld\n", preference);
+		return CMD_WARNING;
 	}
 
 	if (rtr_is_running) {
@@ -1323,7 +1302,7 @@ DEFUN (show_rpki_prefix_table,
 	return CMD_SUCCESS;
 }
 // TODO: make this work again!
-/*DEFUN (show_rpki_cache_connection,
+DEFUN (show_rpki_cache_connection,
     show_rpki_cache_connection_cmd,
     "show rpki cache-connection",
     SHOW_STR
@@ -1331,52 +1310,47 @@ DEFUN (show_rpki_prefix_table,
     "Show to which RPKI Cache Servers we have a connection")
 {
 	if (rpki_is_synchronized()) {
-		struct listnode *cache_group_node;
-		cache_group *cache_group;
+		struct listnode *cache_node;
+		struct cache *cache;
 		struct rtr_mgr_group* group = rpki_get_connected_group();
 		if (group == NULL) {
 			vty_out(vty, "Cannot find a connected group. \n");
 			return CMD_SUCCESS;
 		}
 		vty_out(vty, "Connected to group %d \n", group->preference);
-		for (ALL_LIST_ELEMENTS_RO(cache_group_list, cache_group_node,
-					  cache_group)) {
-			if (cache_group->preference_value == group->preference) {
-				struct list *cache_list =
-					cache_group->cache_config_list;
-				struct listnode *cache_node;
-				cache *cache;
+		for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node,
+					  cache)) {
+			if (cache->preference == group->preference) {
+				struct tr_tcp_config *tcp_config;
+				struct tr_ssh_config *ssh_config;
 
-				for (ALL_LIST_ELEMENTS_RO(cache_list,
-							  cache_node, cache)) {
-					switch (cache->type) {
-						struct tr_tcp_config
-							*tcp_config;
-						struct tr_ssh_config
-							*ssh_config;
-					case TCP:
-						tcp_config =
-							cache->tr_config
-								.tcp_config;
-						vty_out(vty,
-							"rpki cache %s %s \n",
-							tcp_config->host,
-							tcp_config->port);
-						break;
+				switch (cache->type) {
+				case TCP:
+					tcp_config =
+						cache->tr_config
+							.tcp_config;
+					vty_out(vty,
+						"rpki tcp cache %s %s "
+						"pref %hhu \n",
+						tcp_config->host,
+						tcp_config->port,
+						cache->preference);
+					break;
 
-					case SSH:
-						ssh_config =
-							cache->tr_config
-								.ssh_config;
-						vty_out(vty,
-							"  rpki cache %s %u \n",
-							ssh_config->host,
-							ssh_config->port);
-						break;
+				case SSH:
+					ssh_config =
+						cache->tr_config
+							.ssh_config;
+					vty_out(vty,
+						"rpki ssh cache %s %u "
+						"pref %hhu \n",
+						ssh_config->host,
+						ssh_config->port,
+						cache->preference);
+					break;
 
-					default:
-						break;
-					}
+				default:
+					break;
 				}
 			}
 		}
@@ -1385,7 +1359,7 @@ DEFUN (show_rpki_prefix_table,
 	}
 
 	return CMD_SUCCESS;
-}*/
+}
 
 DEFUN (rpki_exit,
     rpki_exit_cmd,
@@ -1418,7 +1392,6 @@ DEFUN (debug_rpki,
        DEBUG_STR
        "Enable debugging for rpki")
 {
-	vty_out(vty, "I'll cry naow\n");
 	rpki_debug = 1;
 	return CMD_SUCCESS;
 }
@@ -1467,14 +1440,14 @@ void install_cli_commands()
 	//cache_group_list->count = 0;
 
 	//TODO: make config write work
-	install_node(&rpki_node, NULL);
+	install_node(&rpki_node, &rpki_config_write);
 	install_default(RPKI_NODE);
 	overwrite_exit_commands();
 	install_element(CONFIG_NODE, &rpki_cmd);
 	install_element(VIEW_NODE, &rpki_cmd);
 
 	/* Install rpki polling period commands */
-	install_element(CONFIG_NODE, &rpki_polling_period_cmd);
+	install_element(RPKI_NODE, &rpki_polling_period_cmd);
 	install_element(CONFIG_NODE, &no_rpki_polling_period_cmd);
 
 	/* Install rpki expire interval commands */
@@ -1510,7 +1483,7 @@ void install_cli_commands()
 	/* Install show commands */
 	install_element(ENABLE_NODE, &show_rpki_prefix_table_cmd);
 	//TODO: make this work again!
-	//install_element(ENABLE_NODE, &show_rpki_cache_connection_cmd);
+	install_element(ENABLE_NODE, &show_rpki_cache_connection_cmd);
 
 	/* Install debug commands */
 	install_element(CONFIG_NODE, &debug_rpki_cmd);
