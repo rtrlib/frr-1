@@ -932,7 +932,7 @@ static int rpki_config_write(struct vty *vty)
 				struct tr_ssh_config *ssh_config;
 			case TCP:
 				tcp_config = cache->tr_config.tcp_config;
-				vty_out(vty, "    rpki cache %s %s \n",
+				vty_out(vty, "    rpki cache %s %s ",
 					tcp_config->host,
 					tcp_config->port);
 				break;
@@ -940,7 +940,7 @@ static int rpki_config_write(struct vty *vty)
 			case SSH:
 				ssh_config = cache->tr_config.ssh_config;
 				vty_out(vty,
-					"    rpki cache %s %u %s %s %s \n",
+					"    rpki cache %s %u %s %s %s ",
 					ssh_config->host,
 					ssh_config->port,
 					ssh_config->username,
@@ -955,6 +955,8 @@ static int rpki_config_write(struct vty *vty)
 			default:
 				break;
 			}
+
+			vty_out(vty, "preference %hhu\n", cache->preference);
 		}
 		return 1;
 	} else {
