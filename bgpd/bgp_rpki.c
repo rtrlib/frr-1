@@ -160,6 +160,7 @@ static void bgp_rpki_free_cache(struct cache *cache);
 struct rtr_mgr_group *get_rtr_mgr_groups(void);
 unsigned int get_number_of_cache_groups(void);
 //void delete_cache_group_list(void);
+#if defined(FOUND_SSH)
 static int add_ssh_cache(const char *host,
 			 const unsigned int port,
 			 const char *username,
@@ -167,6 +168,7 @@ static int add_ssh_cache(const char *host,
 			 const char *client_pubkey_path,
 			 const char *server_pubkey_path,
 			 const uint8_t preference);
+#endif
 //static struct list *create_cache_list(void);
 static struct rtr_socket *create_rtr_socket(struct tr_socket *tr_socket);
 static struct cache *find_cache(const char *host, const char *port_string);
@@ -216,13 +218,16 @@ static struct cache *find_cache(const char *host, const char *port_string)
 			    strcmp(config->port, port_string)) {
 				return cache;
 			}
-		} else {
+		}
+#if defined(FOUND_SSH)
+		else {
 			struct tr_ssh_config *config = cache->tr_config.ssh_config;
 			if (strcmp(config->host, host) &&
 			    config->port == port_int) {
 				return cache;
 			}
 		}
+#endif
 	}
 	return NULL;
 }
@@ -827,6 +832,7 @@ static int add_tcp_cache(const char *host,
 	return add_cache(cache);
 }
 
+#if defined(FOUND_SSH)
 static int add_ssh_cache(const char *host,
 			 const unsigned int port,
 			 const char *username,
@@ -868,6 +874,7 @@ static int add_ssh_cache(const char *host,
 
 	return add_cache(cache);
 }
+#endif
 
 static void bgp_rpki_free_cache(struct cache *cache)
 {
@@ -877,7 +884,9 @@ static void bgp_rpki_free_cache(struct cache *cache)
 		XFREE(MTYPE_BGP_RPKI_CACHE,
 		      cache->tr_config.tcp_config->port);
 		XFREE(MTYPE_BGP_RPKI_CACHE, cache->tr_config.tcp_config);
-	} else {
+	}
+#if defined(FOUND_SSH)
+	else {
 		XFREE(MTYPE_BGP_RPKI_CACHE,
 		      cache->tr_config.ssh_config->host);
 		XFREE(MTYPE_BGP_RPKI_CACHE,
@@ -888,6 +897,7 @@ static void bgp_rpki_free_cache(struct cache *cache)
 		      cache->tr_config.ssh_config->server_hostkey_path);
 		XFREE(MTYPE_BGP_RPKI_CACHE, cache->tr_config.ssh_config);
 	}
+#endif
 	XFREE(MTYPE_BGP_RPKI_CACHE, cache->tr_socket);
 	XFREE(MTYPE_BGP_RPKI_CACHE, cache->rtr_socket);
 	XFREE(MTYPE_BGP_RPKI_CACHE, cache);
@@ -926,7 +936,7 @@ static int rpki_config_write(struct vty *vty)
 					tcp_config->host,
 					tcp_config->port);
 				break;
-
+#if defined(FOUND_SSH)
 			case SSH:
 				ssh_config = cache->tr_config.ssh_config;
 				vty_out(vty,
@@ -941,7 +951,7 @@ static int rpki_config_write(struct vty *vty)
 							  ->server_hostkey_path
 						: " ");
 				break;
-
+#endif
 			default:
 				break;
 			}
@@ -1145,9 +1155,16 @@ DEFPY (rpki_cache,
 	// use ssh connection
 
 	if (ssh_uname) {
+#if defined(FOUND_SSH)
 		return_value = add_ssh_cache(
 			cache, sshport, ssh_uname, ssh_privkey, ssh_pubkey,
 			server_pubkey, preference);
+#else
+		vty_out(vty,
+			"ssh sockets are not supported. "
+			"Please recompile rtrlib and frr with ssh support. "
+			"If you want to use it");
+#endif
 	} else { // use tcp connection
 		return_value = add_tcp_cache(cache, tcpport, preference);
 		vty_out(vty,
@@ -1313,6 +1330,7 @@ DEFUN (show_rpki_cache_connection,
 						cache->preference);
 					break;
 
+#if defined(FOUND_SSH)
 				case SSH:
 					ssh_config =
 						cache->tr_config
@@ -1324,6 +1342,7 @@ DEFUN (show_rpki_cache_connection,
 						ssh_config->port,
 						cache->preference);
 					break;
+#endif
 
 				default:
 					break;
