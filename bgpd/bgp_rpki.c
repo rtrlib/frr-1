@@ -37,8 +37,8 @@
 #include "bgpd/bgp_debug.h"
 #include "bgpd/bgp_attr.h"
 #include "bgpd/bgp_aspath.h"
-#include "bgpd/bgp_rpki.h"
-#include "bgpd/bgp_rpki_commands.h"
+#include "bgpd/bgp_route.h"
+//#include "bgpd/bgp_rpki.h"
 #include "rtrlib/rtrlib.h"
 #include "rtrlib/rtr_mgr.h"
 #include "rtrlib/lib/ip.h"
@@ -57,13 +57,35 @@
 DEFINE_MTYPE_STATIC(BGPD, BGP_RPKI_CACHE, "BGP RPKI Cache server")
 DEFINE_MTYPE_STATIC(BGPD, BGP_RPKI_CACHE_GROUP, "BGP RPKI Cache server group")
 
+#define RPKI_VALID      1
+#define RPKI_NOTFOUND   2
+#define RPKI_INVALID    3
+
+#define POLLING_PERIOD_DEFAULT 3600
+#define EXPIRE_INTERVAL_DEFAULT 7200
+#define RETRY_INTERVAL_DEFAULT 600
+#define TIMEOUT_DEFAULT 600
+#define INITIAL_SYNCHRONISATION_TIMEOUT_DEFAULT 30
+
+#define RPKI_DEBUG(...)                                                        \
+	if (rpki_debug) {                                                      \
+		zlog_debug("RPKI: "__VA_ARGS__);                               \
+	}
+#define TO_STRING(s) str(s)
+#define str(s) #s
+
 /**********************************/
 /** Declaration of variables     **/
 /**********************************/
 struct rtr_mgr_config *rtr_config;
 struct list *cache_list;
 int rtr_is_running;
-int route_map_active;
+int rpki_debug;
+unsigned int polling_period;
+unsigned int expire_interval;
+unsigned int retry_interval;
+unsigned int timeout;
+unsigned int initial_synchronisation_timeout;
 
 /**********************************/
 /** Declaration of structs       **/
@@ -101,6 +123,8 @@ static void rpki_free_wrapper(void *ptr)
 	XFREE(MTYPE_BGP_RPKI_CACHE, ptr);
 }
 
+static int rpki_validate_prefix(struct peer *peer, struct attr *attr,
+			 struct prefix *prefix);
 
 static route_map_result_t route_match_rpki(void *rule, struct prefix *prefix,
 					   route_map_object_t type,
@@ -138,7 +162,6 @@ static void *route_match_rpki_compile(const char *arg)
 
 static void route_match_rpki_free(void *rule)
 {
-	rpki_set_route_map_active(0);
 	XFREE(MTYPE_ROUTE_MAP_COMPILED, rule);
 }
 
@@ -148,18 +171,19 @@ struct route_map_rule_cmd route_match_rpki_cmd = {"rpki", route_match_rpki,
 						  route_match_rpki_free};
 /*******************************************/
 /*******************************************/
-void rpki_start(void);
+static void rpki_start(void);
+static void rpki_stop(void);
+static void rpki_reset(void);
+static struct rtr_mgr_group* rpki_get_connected_group(void);
+static void rpki_print_prefix_table(struct vty *vty);
 extern void bgp_process(struct bgp *bgp, struct bgp_node *rn, afi_t afi,
 			safi_t safi);
-static void delete_cache(void *value);
-//static void delete_cache_group(void *_cache_group);
-void install_cli_commands(void);
+static void install_cli_commands(void);
 static int rpki_config_write(struct vty *vty);
 static void overwrite_exit_commands(void);
 static void bgp_rpki_free_cache(struct cache *cache);
 struct rtr_mgr_group *get_rtr_mgr_groups(void);
 unsigned int get_number_of_cache_groups(void);
-//void delete_cache_group_list(void);
 #if defined(FOUND_SSH)
 static int add_ssh_cache(const char *host,
 			 const unsigned int port,
@@ -169,7 +193,6 @@ static int add_ssh_cache(const char *host,
 			 const char *server_pubkey_path,
 			 const uint8_t preference);
 #endif
-//static struct list *create_cache_list(void);
 static struct rtr_socket *create_rtr_socket(struct tr_socket *tr_socket);
 static struct cache *find_cache(const char *host, const char *port_string);
 static int add_tcp_cache(const char *host,
@@ -177,19 +200,7 @@ static int add_tcp_cache(const char *host,
 			 const uint8_t preference);
 /*****************************************/
 /*****************************************/
-//static void list_all_nodes(struct vty *vty, const struct trie_node *node,
-//			   unsigned int *count);
 static void print_record(const struct pfx_record *record, void *data);
-//static void update_cb(struct pfx_table *p, const struct pfx_record rec,
-//		      const bool added);
-//static void ipv6_addr_to_network_byte_order(const uint32_t *src,
-//					    uint32_t *dest);
-//static void revalidate_prefix(struct bgp *bgp, afi_t afi,
-//			      struct prefix *prefix);
-/*static int rpki_update_cb_sync_bgpd(struct thread *thread);*/
-/*static void rpki_update_cb_sync_rtr(struct pfx_table *p __attribute__((unused)),*/
-				    /*const struct pfx_record rec,*/
-				    /*const bool added __attribute__((unused)));*/
 
 /*****************************************/
 /** Implementation of public functions  **/
@@ -244,44 +255,6 @@ static struct cache *find_cache_pref(const uint8_t preference)
 	return NULL;
 }
 
-
-
-/*static struct list *create_cache_list()
-{
-	struct list *cache_list = list_new();
-	cache_list->del = delete_cache;
-	cache_list->count = 0;
-	return cache_list;
-}*/
-
-/*static cache_group *create_cache_group(int preference_value)
-{
-	cache_group *group;
-	if ((group = XMALLOC(MTYPE_BGP_RPKI_CACHE_GROUP, sizeof(cache_group)))
-	    == NULL) {
-		return NULL;
-	}
-	group->cache_config_list = create_cache_list();
-	group->preference_value = preference_value;
-	group->delete_flag = 0;
-	return group;
-}*/
-
-/*static void reprocess_routes(struct bgp *bgp)
-{
-	afi_t afi;
-	for (afi = AFI_IP; afi < AFI_MAX; ++afi) {
-		rpki_revalidate_all_routes(bgp, afi);
-	}
-}*/
-
-/*static void ipv6_addr_to_network_byte_order(const uint32_t *src, uint32_t *dest)
-{
-	int i;
-	for (i = 0; i < 4; i++)
-		dest[i] = htonl(src[i]);
-}*/
-
 static void print_record(const struct pfx_record *record, void *data)
 {
 	char ip[INET6_ADDRSTRLEN];
@@ -294,22 +267,6 @@ static void print_record(const struct pfx_record *record, void *data)
 	vty_out(vty, "%-40s   %3u - %3u   %10u\n", ip, record->min_len,
 		record->max_len, record->asn);
 }
-
-/*static void list_all_nodes(struct vty *vty, const struct trie_node *node,
-			   unsigned int *count)
-{
-	*count += 1;
-
-	if (node->lchild != NULL) {
-		list_all_nodes(vty, node->lchild, count);
-	}
-
-	print_record(vty, node);
-
-	if (node->rchild != NULL) {
-		list_all_nodes(vty, node->rchild, count);
-	}
-}*/
 
 struct rtr_mgr_group *get_rtr_mgr_groups()
 {
@@ -340,27 +297,6 @@ struct rtr_mgr_group *get_rtr_mgr_groups()
 	return rtr_mgr_groups;
 }
 
-/*unsigned int get_number_of_cache_groups()
-{
-	delete_marked_cache_groups();
-	return listcount(cache_group_list);
-}*/
-
-/*void delete_cache_group_list()
-{
-	list_delete(cache_group_list);
-}*/
-
-inline void rpki_set_route_map_active(int activate)
-{
-	route_map_active = activate;
-}
-
-inline int rpki_is_route_map_active()
-{
-	return route_map_active;
-}
-
 inline int rpki_is_synchronized(void)
 {
 	return rtr_is_running && rtr_mgr_conf_in_sync(rtr_config);
@@ -371,107 +307,6 @@ inline int rpki_is_running(void)
 	return rtr_is_running;
 }
 
-/*static void revalidate_prefix(struct bgp *bgp, afi_t afi, struct prefix *prefix)
-{
-	struct bgp_node *bgp_node;
-	struct bgp_info *bgp_info;
-	safi_t safi;
-
-	for (safi = SAFI_UNICAST; safi < SAFI_MAX; safi++) {
-		bgp_node = bgp_node_lookup(bgp->rib[afi][safi], prefix);
-		if (bgp_node != NULL && bgp_node->info != NULL) {
-			bool status_changed = false;
-			for (bgp_info = bgp_node->info; bgp_info;
-			     bgp_info = bgp_info->next) {
-				u_char old_status =
-					bgp_info->rpki_validation_status;
-				bgp_info->rpki_validation_status =
-					rpki_validate_prefix(bgp_info->peer,
-							     bgp_info->attr,
-							     &bgp_node->p);
-				if (old_status
-				    != bgp_info->rpki_validation_status) {
-					status_changed = true;
-				}
-			}
-			if (status_changed) {
-				int ret;
-				struct bgp_adj_in *ain;
-				for (ain = bgp_node->adj_in; ain;
-				     ain = ain->next) {
-					struct bgp_info *ri = bgp_node->info;
-					u_char *tag = (ri && ri->extra)
-							      ? ri->extra->tag
-							      : NULL;
-					ret = bgp_update(
-						ain->peer, &bgp_node->p,
-						ain->attr, afi, safi,
-						ZEBRA_ROUTE_BGP,
-						BGP_ROUTE_NORMAL, NULL, tag, 1);
-
-					if (ret < 0) {
-						bgp_unlock_node(bgp_node);
-						return;
-					}
-				}
-			}
-		}
-	}
-}*/
-
-/*static void update_cb(struct pfx_table *p __attribute__((unused)),
-		      const struct pfx_record rec,
-		      const bool added __attribute__((unused)))
-{
-	struct bgp *bgp;
-	struct listnode *node;
-	struct prefix prefix;
-
-	if (!rpki_is_synchronized()) {
-		return;
-	}
-
-	for (ALL_LIST_ELEMENTS_RO(bm->bgp, node, bgp)) {
-		if (bgp_flag_check(bgp, BGP_FLAG_VALIDATE_DISABLE)) {
-			continue;
-		}
-		for (prefix.prefixlen = rec.min_len;
-		     prefix.prefixlen < rec.max_len; ++prefix.prefixlen) {
-			switch (rec.prefix.ver) {
-			case LRTR_IPV4:
-				prefix.family = AFI_IP;
-				prefix.u.prefix4.s_addr =
-					htonl(rec.prefix.u.addr4.addr);
-				revalidate_prefix(bgp, AFI_IP, &prefix);
-				break;
-			case LRTR_IPV6:
-				prefix.family = AFI_IP6;
-				ipv6_addr_to_network_byte_order(
-					rec.prefix.u.addr6.addr,
-					prefix.u.prefix6.s6_addr32);
-				revalidate_prefix(bgp, AFI_IP6, &prefix);
-				break;
-			default:
-				break;
-			}
-		}
-	}
-}*/
-
-/*void rpki_init_sync_socket()
-{
-	int fds[2];
-	if (socketpair(PF_LOCAL, SOCK_DGRAM, 0, fds) != 0) {
-		RPKI_DEBUG("Could not open rpki sync socket");
-		return;
-	}
-	rpki_sync_socket_rtr = fds[0];
-	rpki_sync_socket_bgpd = fds[1];
-	fcntl(rpki_sync_socket_rtr, F_SETFL, O_NONBLOCK);
-	thread_add_read(bm->master, rpki_update_cb_sync_bgpd, 0,
-			rpki_sync_socket_bgpd, NULL);
-}*/
-
 static int bgp_rpki_init(struct thread_master *master)
 {
 	//rpki_init_sync_socket();
@@ -479,7 +314,7 @@ static int bgp_rpki_init(struct thread_master *master)
 	rtr_is_running = 0;
 
 	cache_list = list_new();
-	cache_list->del = &bgp_rpki_free_cache;
+	cache_list->del = (void (*)(void *)) &bgp_rpki_free_cache;
 
 	polling_period = POLLING_PERIOD_DEFAULT;
 	expire_interval = EXPIRE_INTERVAL_DEFAULT;
@@ -553,7 +388,16 @@ void rpki_start(void)
 	XFREE(MTYPE_BGP_RPKI_CACHE_GROUP, groups);
 }
 
-void rpki_reset_session(void)
+void rpki_stop(void)
+{
+	if (rtr_is_running) {
+		rtr_mgr_stop(rtr_config);
+		rtr_mgr_free(rtr_config);
+		rtr_is_running = 0;
+	}
+}
+
+void rpki_reset(void)
 {
 	RPKI_DEBUG("Resetting RPKI Session");
 	if (rtr_is_running) {
@@ -562,15 +406,6 @@ void rpki_reset_session(void)
 		rtr_is_running = 0;
 	}
 	rpki_start();
-}
-
-void rpki_finish(void)
-{
-	RPKI_DEBUG("Stopping");
-
-	rtr_mgr_stop(rtr_config);
-	rtr_mgr_free(rtr_config);
-	rtr_is_running = 0;
 }
 
 struct rtr_mgr_group* rpki_get_connected_group()
@@ -589,7 +424,11 @@ void rpki_print_prefix_table(struct vty *vty)
 	unsigned int number_of_ipv4_prefixes = 0;
 	unsigned int number_of_ipv6_prefixes = 0;
 	arg.vty = vty;
-	struct pfx_table *pfx_table = rpki_get_connected_group()->sockets[0]->pfx_table;
+	struct rtr_mgr_group* group = rpki_get_connected_group();
+	if (!group) {
+		return;
+	}
+	struct pfx_table *pfx_table = group->sockets[0]->pfx_table;
 
 	vty_out(vty, "RPKI/RTR prefix table\n");
 	vty_out(vty, "%-40s %s  %s \n", "Prefix", "Prefix Length", "Origin-AS");
@@ -604,22 +443,7 @@ void rpki_print_prefix_table(struct vty *vty)
 	vty_out(vty, "Number of IPv6 Prefixes: %u \n", number_of_ipv6_prefixes);
 }
 
-/*void rpki_set_validation_status(struct bgp *bgp, struct bgp_info *bgp_info,
-				struct prefix *prefix)
-{
-	int validate_disable = bgp_flag_check(bgp, BGP_FLAG_VALIDATE_DISABLE);
-
-	for (; bgp_info; bgp_info = bgp_info->next) {
-		if (validate_disable) {
-			bgp_info->rpki_validation_status = 0;
-		} else {
-			bgp_info->rpki_validation_status = rpki_validate_prefix(
-				bgp_info->peer, bgp_info->attr, prefix);
-		}
-	}
-}*/
-
-int rpki_validate_prefix(struct peer *peer, struct attr *attr,
+static int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 			 struct prefix *prefix)
 {
 	struct assegment *as_segment;
@@ -709,74 +533,9 @@ int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 	return 0;
 }
 
-/*void rpki_revalidate_all_routes(struct bgp *bgp, afi_t afi)
-{
-	struct bgp_node *bgp_node;
-	struct bgp_info *bgp_info;
-	safi_t safi;
-	for (safi = SAFI_UNICAST; safi < SAFI_MAX; safi++) {
-		for (bgp_node = bgp_table_top(bgp->rib[afi][safi]); bgp_node;
-		     bgp_node = bgp_route_next(bgp_node)) {
-			if (bgp_node->info != NULL) {
-				bool status_changed = false;
-				for (bgp_info = bgp_node->info; bgp_info;
-				     bgp_info = bgp_info->next) {
-					u_char old_status =
-						bgp_info->rpki_validation_status;
-					bgp_info->rpki_validation_status =
-						rpki_validate_prefix(
-							bgp_info->peer,
-							bgp_info->attr,
-							&bgp_node->p);
-					if (old_status
-					    != bgp_info->rpki_validation_status) {
-						status_changed = true;
-					}
-				}
-				if (status_changed) {
-					bgp_process(bgp, bgp_node, afi, safi);
-				}
-			}
-		}
-	}
-}*/
-
 /*****************************************/
 /** Implementation of private functions **/
 /*****************************************/
-
-/*static int rpki_update_cb_sync_bgpd(struct thread *thread)
-{
-	struct pfx_record *rec;
-	thread_add_read(bm->master, rpki_update_cb_sync_bgpd, 0,
-			rpki_sync_socket_bgpd, NULL);
-	int rtval =
-		read(rpki_sync_socket_bgpd, &rec, sizeof(struct pfx_record *));
-	if (rtval < 1) {
-		RPKI_DEBUG("Could not read from rpki_sync_socket_bgpd");
-		// memory leak?
-		return rtval;
-	}
-	update_cb(NULL, *rec, NULL);
-	free(rec);
-	return 0;
-}*/
-
-
-/*static void rpki_update_cb_sync_rtr(struct pfx_table *p __attribute__((unused)),
-				    const struct pfx_record rec,
-				    const bool added __attribute__((unused)))
-{
-
-	struct pfx_record *rec_copy = malloc(sizeof(struct pfx_record));
-	memcpy(rec_copy, &rec, sizeof(struct pfx_record));
-	int rtval = write(rpki_sync_socket_rtr, &rec_copy,
-			  sizeof(struct pfx_record *));
-	if (rtval < 1) {
-		RPKI_DEBUG("Could not write to rpki_sync_socket_rtr");
-	}
-}*/
-
 
 static int add_cache(struct cache *cache)
 {
@@ -903,13 +662,6 @@ static void bgp_rpki_free_cache(struct cache *cache)
 	XFREE(MTYPE_BGP_RPKI_CACHE, cache);
 }
 
-/*static void delete_cache_group(void *_cache_group)
-{
-	cache_group *group = _cache_group;
-	list_delete(group->cache_config_list);
-	XFREE(MTYPE_BGP_RPKI_CACHE_GROUP, group);
-}*/
-
 static int rpki_config_write(struct vty *vty)
 {
 	struct listnode *cache_node;
@@ -967,7 +719,6 @@ static int rpki_config_write(struct vty *vty)
 DEFUN (rpki,
     rpki_cmd,
     "rpki",
-    BGP_STR
     "Enable rpki and enter rpki configuration mode\n")
 {
 	vty->node = RPKI_NODE;
@@ -1091,53 +842,6 @@ DEFUN (no_rpki_synchronisation_timeout,
 	return CMD_SUCCESS;
 }
 
-/*DEFPY (rpki_group,
-    rpki_group_cmd,
-    "rpki group (0-4294967295)",
-    RPKI_OUTPUT_STRING
-    "Select an existing or start a new group of cache servers\n"
-    "Preference Value for this group (lower value means higher preference)\n")
-{
-	cache_group *new_cache_group;
-
-	currently_selected_cache_group = find_cache_group(group);
-
-	// Group does not yet exist so create new one
-	if (currently_selected_cache_group == NULL) {
-		if ((new_cache_group = create_cache_group(group)) == NULL) {
-			vty_out(vty,
-				"Could not create new rpki cache group because "
-				"of memory allocation error\n");
-			return CMD_WARNING;
-		}
-		listnode_add(cache_group_list, new_cache_group);
-		currently_selected_cache_group = new_cache_group;
-	}
-	return CMD_SUCCESS;
-}
-
-DEFPY (no_rpki_group,
-    no_rpki_group_cmd,
-    "no rpki group (0-4294967295)",
-    NO_STR
-    RPKI_OUTPUT_STRING
-    "Remove a group of cache servers\n"
-    "Preference Value for this group (lower value means higher preference)\n")
-{
-	cache_group *cache_group;
-	cache_group = find_cache_group(group);
-	if (cache_group == NULL) {
-		vty_out(vty,
-			"There is no cache group with preference value %ld\n",
-			group);
-		return CMD_WARNING;
-	}
-	cache_group->delete_flag = 1;
-	currently_selected_cache_group = NULL;
-	return CMD_SUCCESS;
-}*/
-
-
 DEFPY (rpki_cache,
     rpki_cache_cmd,
     "rpki cache <A.B.C.D|WORD> "
@@ -1151,7 +855,9 @@ DEFPY (rpki_cache,
     "SSH user name \n"
     "Path to own SSH private key \n"
     "Path to own SSH public key \n"
-    "Path to Public key of cache server \n")
+    "Path to Public key of cache server \n"
+    "Preference of the cache server\n"
+    "Preference value\n")
 {
 	int return_value = SUCCESS;
 	// use ssh connection
@@ -1287,7 +993,10 @@ DEFUN (show_rpki_prefix_table,
 	struct cache *cache;
 
 	for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node, cache)) {
-		vty_out(vty, "host: %s port: %s\n", cache->tr_config.tcp_config->host, cache->tr_config.tcp_config->port);
+		vty_out(vty,
+			"host: %s port: %s\n",
+			cache->tr_config.tcp_config->host,
+			cache->tr_config.tcp_config->port);
 	}
 	if (rpki_is_synchronized()) {
 		rpki_print_prefix_table(vty);
@@ -1363,7 +1072,7 @@ DEFUN (rpki_exit,
     "exit",
     "Exit rpki configuration and restart rpki session")
 {
-	rpki_reset_session();
+	rpki_reset();
 	vty->node = CONFIG_NODE;
 	return CMD_SUCCESS;
 }
@@ -1377,7 +1086,7 @@ DEFUN (rpki_end,
     "end",
     "End rpki configuration, restart rpki session and change to enable mode.")
 {
-	rpki_reset_session();
+	rpki_reset();
 	vty_config_unlock(vty);
 	vty->node = ENABLE_NODE;
 	return CMD_SUCCESS;
@@ -1432,10 +1141,6 @@ static void overwrite_exit_commands()
 }
 void install_cli_commands()
 {
-	//cache_group_list = list_new();
-	//cache_group_list->del = delete_cache_group;
-	//cache_group_list->count = 0;
-
 	//TODO: make config write work
 	install_node(&rpki_node, &rpki_config_write);
 	install_default(RPKI_NODE);
@@ -1451,6 +1156,10 @@ void install_cli_commands()
 	install_element(CONFIG_NODE, &rpki_expire_interval_cmd);
 	install_element(CONFIG_NODE, &no_rpki_expire_interval_cmd);
 
+	/* Install rpki retry interval commands */
+	install_element(CONFIG_NODE, &rpki_retry_interval_cmd);
+	install_element(CONFIG_NODE, &no_rpki_retry_interval_cmd);
+
 	/* Install rpki timeout commands */
 	install_element(CONFIG_NODE, &rpki_timeout_cmd);
 	install_element(CONFIG_NODE, &no_rpki_timeout_cmd);
@@ -1458,10 +1167,6 @@ void install_cli_commands()
 	/* Install rpki synchronisation timeout commands */
 	install_element(CONFIG_NODE, &rpki_synchronisation_timeout_cmd);
 	install_element(CONFIG_NODE, &no_rpki_synchronisation_timeout_cmd);
-
-	/* Install rpki group commands */
-	//install_element(CONFIG_NODE, &rpki_group_cmd);
-	//install_element(CONFIG_NODE, &no_rpki_group_cmd);
 
 	/* Install rpki cache commands */
 	install_element(CONFIG_NODE, &rpki_cache_cmd);
@@ -1488,8 +1193,8 @@ void install_cli_commands()
 	install_element(CONFIG_NODE, &no_debug_rpki_cmd);
 	install_element(ENABLE_NODE, &no_debug_rpki_cmd);
 
-	/*[> Install route match <]*/
-	/*route_map_install_match(&route_match_rpki_cmd);*/
+	/* Install route match */
+	route_map_install_match(&route_match_rpki_cmd);
 }
 FRR_MODULE_SETUP(.name = "bgpd_rpki", .version = "0.3.6",
 		 .description = "Enable RPKI support for FRR.",
