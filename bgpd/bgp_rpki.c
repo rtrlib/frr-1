@@ -54,6 +54,9 @@
 
 #include "bgp_rpki_clippy.c"
 
+int rpki_is_synchronized(void);
+int rpki_is_running(void);
+
 DEFINE_MTYPE_STATIC(BGPD, BGP_RPKI_CACHE, "BGP RPKI Cache server")
 DEFINE_MTYPE_STATIC(BGPD, BGP_RPKI_CACHE_GROUP, "BGP RPKI Cache server group")
 
@@ -1112,6 +1115,62 @@ DEFUN (no_debug_rpki,
 	rpki_debug = 0;
 	return CMD_SUCCESS;
 }
+
+DEFUN (match_rpki,
+       match_rpki_cmd,
+       "match rpki <valid|invalid|notfound>",
+       MATCH_STR
+       RPKI_OUTPUT_STRING
+       "Valid prefix\n"
+       "Invalid prefix\n"
+       "Prefix not found\n")
+{
+	VTY_DECLVAR_CONTEXT(route_map_index, index);
+	int ret;
+
+	ret = route_map_add_match(index, "rpki", argv[2]->arg);
+	if (ret) {
+		switch (ret) {
+		case RMAP_RULE_MISSING:
+			vty_out(vty, "%% BGP Can't find rule.\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		case RMAP_COMPILE_ERROR:
+			vty_out(vty, "%% BGP Argument is malformed.\n");
+			return CMD_WARNING_CONFIG_FAILED;
+		}
+	}
+	return CMD_SUCCESS;
+}
+
+DEFUN (no_match_rpki,
+       no_match_rpki_cmd,
+       "no match rpki <valid|invalid|notfound>",
+       NO_STR
+       MATCH_STR
+       RPKI_OUTPUT_STRING
+       "Valid prefix\n"
+       "Invalid prefix\n"
+       "Prefix not found\n")
+{
+	VTY_DECLVAR_CONTEXT(route_map_index, index);
+	int ret;
+
+	ret = route_map_delete_match(index, "rpki", argv[3]->arg);
+	if (ret) {
+		switch (ret) {
+		case RMAP_RULE_MISSING:
+			vty_out(vty, "%% BGP Can't find rule.\n");
+			break;
+		case RMAP_COMPILE_ERROR:
+			vty_out(vty, "%% BGP Argument is malformed.\n");
+			break;
+		}
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	return CMD_SUCCESS;
+}
+
 static void overwrite_exit_commands()
 {
 	unsigned int i;
@@ -1195,7 +1254,10 @@ void install_cli_commands()
 
 	/* Install route match */
 	route_map_install_match(&route_match_rpki_cmd);
+	install_element(RMAP_NODE, &match_rpki_cmd);
+	install_element(RMAP_NODE, &no_match_rpki_cmd);
 }
+
 FRR_MODULE_SETUP(.name = "bgpd_rpki", .version = "0.3.6",
 		 .description = "Enable RPKI support for FRR.",
 	 .init = bgp_rpki_module_init)
