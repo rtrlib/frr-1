@@ -295,6 +295,12 @@ struct rtr_mgr_group *get_rtr_mgr_groups()
 		rtr_mgr_groups[i].sockets = &(cache->rtr_socket);
 		rtr_mgr_groups[i].sockets_len = 1;
 		rtr_mgr_groups[i].preference = cache->preference;
+
+		if (cache->type == TCP) {
+			tr_tcp_init(cache->tr_config.tcp_config, cache->tr_socket);
+		} else {
+			tr_ssh_init(cache->tr_config.ssh_config, cache->tr_socket);
+		}
 	}
 
 	return rtr_mgr_groups;
@@ -326,19 +332,13 @@ static int bgp_rpki_init(struct thread_master *master)
 	initial_synchronisation_timeout =
 		INITIAL_SYNCHRONISATION_TIMEOUT_DEFAULT;
 	install_cli_commands();
-	rpki_start();
 	return 0;
 }
 
 static int bgp_rpki_fini()
 {
-	if (rtr_is_running) {
-		rtr_mgr_stop(rtr_config);
-		rtr_mgr_free(rtr_config);
-	}
-
+	rpki_stop();
 	list_delete(cache_list);
-
 
 	return 0;
 }
@@ -579,7 +579,7 @@ static int add_tcp_cache(const char *host,
 	tcp_config->port = XSTRDUP(MTYPE_BGP_RPKI_CACHE, port);
 	tcp_config->bindaddr = NULL;
 
-	tr_tcp_init(tcp_config, tr_socket);
+	//tr_tcp_init(tcp_config, tr_socket);
 
 	if ((rtr_socket = create_rtr_socket(tr_socket)) == NULL) {
 		return ERROR;
@@ -623,7 +623,7 @@ static int add_ssh_cache(const char *host,
 			MTYPE_BGP_RPKI_CACHE, client_privkey_path);
 	ssh_config->server_hostkey_path = XSTRDUP(MTYPE_BGP_RPKI_CACHE, server_pubkey_path);
 
-	tr_ssh_init(ssh_config, tr_socket);
+	//tr_ssh_init(ssh_config, tr_socket);
 	if ((rtr_socket = create_rtr_socket(tr_socket)) == NULL) {
 		return ERROR;
 	}
@@ -719,12 +719,36 @@ static int rpki_config_write(struct vty *vty)
 	}
 }
 
-DEFUN (rpki,
+DEFUN_NOSH (rpki,
     rpki_cmd,
     "rpki",
     "Enable rpki and enter rpki configuration mode\n")
 {
 	vty->node = RPKI_NODE;
+	return CMD_SUCCESS;
+}
+
+DEFUN (bgp_rpki_start,
+       bgp_rpki_start_cmd,
+       "rpki start",
+       RPKI_OUTPUT_STRING
+       "start rpki support\n")
+{
+	if (!rpki_is_running()) {
+		rpki_start();
+	}
+	return CMD_SUCCESS;
+}
+
+DEFUN (bgp_rpki_stop,
+       bgp_rpki_stop_cmd,
+       "rpki stop",
+       RPKI_OUTPUT_STRING
+       "start rpki support\n")
+{
+	if (rpki_is_running()) {
+		rpki_stop();
+	}
 	return CMD_SUCCESS;
 }
 
@@ -863,8 +887,8 @@ DEFPY (rpki_cache,
     "Preference value\n")
 {
 	int return_value = SUCCESS;
-	// use ssh connection
 
+	// use ssh connection
 	if (ssh_uname) {
 #if defined(FOUND_SSH)
 		return_value = add_ssh_cache(
@@ -890,10 +914,8 @@ DEFPY (rpki_cache,
 	}
 
 	if (!rpki_is_running()) {
-		rpki_start();
+		//rpki_start();
 	}
-
-	//rpki_start();
 
 	return CMD_SUCCESS;
 }
@@ -1008,7 +1030,7 @@ DEFUN (show_rpki_prefix_table,
 	}
 	return CMD_SUCCESS;
 }
-// TODO: make this work again!
+
 DEFUN (show_rpki_cache_connection,
     show_rpki_cache_connection_cmd,
     "show rpki cache-connection",
@@ -1070,7 +1092,7 @@ DEFUN (show_rpki_cache_connection,
 	return CMD_SUCCESS;
 }
 
-DEFUN (rpki_exit,
+DEFUN_NOSH (rpki_exit,
     rpki_exit_cmd,
     "exit",
     "Exit rpki configuration and restart rpki session")
@@ -1081,10 +1103,19 @@ DEFUN (rpki_exit,
 }
 
 /* quit is alias of exit. */
-ALIAS(rpki_exit, rpki_quit_cmd, "quit",
-      "Exit rpki configuration and restart rpki session")
+/*ALIAS(rpki_exit, rpki_quit_cmd, "quit",
+      "Exit rpki configuration and restart rpki session");*/
 
-DEFUN (rpki_end,
+DEFUN_NOSH (rpki_quit,
+	    rpki_quit_cmd,
+	    "quit",
+	    "Exit rpki configuration mode")
+{
+	printf("pls2\n");
+	return rpki_exit(self, vty, argc, argv);
+}
+
+DEFUN_NOSH (rpki_end,
     rpki_end_cmd,
     "end",
     "End rpki configuration, restart rpki session and change to enable mode.")
@@ -1175,28 +1206,19 @@ static void overwrite_exit_commands()
 {
 	unsigned int i;
 	vector cmd_vector = rpki_node.cmd_vector;
+
 	for (i = 0; i < cmd_vector->active; ++i) {
-		struct cmd_element *cmd =
-			(struct cmd_element *)vector_lookup(cmd_vector, i);
+		struct cmd_element *cmd = vector_lookup(cmd_vector, i);
 		if (strcmp(cmd->string, "exit") == 0
 		    || strcmp(cmd->string, "quit") == 0
-		    || strcmp(cmd->string, "exit") == 0) {
-			vector_unset(cmd_vector, i);
+		    || strcmp(cmd->string, "end") == 0) {
+			uninstall_element(RPKI_NODE, cmd);
 		}
 	}
-	/*
-	 The comments in the following 3 lines must not be removed.
-	 They prevent the script ../vtysh/extract.pl from copying the lines
-	 into ../vtysh/vtysh_cmd.c which would cause the commands to be
-	 ambiguous
-	 and we don't want that.
-	 */
-	install_element(RPKI_NODE /*DO NOT REMOVE THIS COMMENT*/,
-			&rpki_exit_cmd);
-	install_element(RPKI_NODE /*DO NOT REMOVE THIS COMMENT*/,
-			&rpki_quit_cmd);
-	install_element(RPKI_NODE /*DO NOT REMOVE THIS COMMENT*/,
-			&rpki_end_cmd);
+
+	install_element(RPKI_NODE, &rpki_exit_cmd);
+	install_element(RPKI_NODE, &rpki_quit_cmd);
+	install_element(RPKI_NODE, &rpki_end_cmd);
 }
 void install_cli_commands()
 {
@@ -1207,29 +1229,32 @@ void install_cli_commands()
 	install_element(CONFIG_NODE, &rpki_cmd);
 	install_element(VIEW_NODE, &rpki_cmd);
 
+	install_element(ENABLE_NODE, &bgp_rpki_start_cmd);
+	install_element(ENABLE_NODE, &bgp_rpki_stop_cmd);
+
 	/* Install rpki polling period commands */
-	install_element(CONFIG_NODE, &rpki_polling_period_cmd);
-	install_element(CONFIG_NODE, &no_rpki_polling_period_cmd);
+	install_element(RPKI_NODE, &rpki_polling_period_cmd);
+	install_element(RPKI_NODE, &no_rpki_polling_period_cmd);
 
 	/* Install rpki expire interval commands */
-	install_element(CONFIG_NODE, &rpki_expire_interval_cmd);
-	install_element(CONFIG_NODE, &no_rpki_expire_interval_cmd);
+	install_element(RPKI_NODE, &rpki_expire_interval_cmd);
+	install_element(RPKI_NODE, &no_rpki_expire_interval_cmd);
 
 	/* Install rpki retry interval commands */
-	install_element(CONFIG_NODE, &rpki_retry_interval_cmd);
-	install_element(CONFIG_NODE, &no_rpki_retry_interval_cmd);
+	install_element(RPKI_NODE, &rpki_retry_interval_cmd);
+	install_element(RPKI_NODE, &no_rpki_retry_interval_cmd);
 
 	/* Install rpki timeout commands */
-	install_element(CONFIG_NODE, &rpki_timeout_cmd);
-	install_element(CONFIG_NODE, &no_rpki_timeout_cmd);
+	install_element(RPKI_NODE, &rpki_timeout_cmd);
+	install_element(RPKI_NODE, &no_rpki_timeout_cmd);
 
 	/* Install rpki synchronisation timeout commands */
-	install_element(CONFIG_NODE, &rpki_synchronisation_timeout_cmd);
-	install_element(CONFIG_NODE, &no_rpki_synchronisation_timeout_cmd);
+	install_element(RPKI_NODE, &rpki_synchronisation_timeout_cmd);
+	install_element(RPKI_NODE, &no_rpki_synchronisation_timeout_cmd);
 
 	/* Install rpki cache commands */
-	install_element(CONFIG_NODE, &rpki_cache_cmd);
-	install_element(CONFIG_NODE, &no_rpki_cache_cmd);
+	install_element(RPKI_NODE, &rpki_cache_cmd);
+	install_element(RPKI_NODE, &no_rpki_cache_cmd);
 
 	/* Install prefix_validate disable commands */
 	//install_element(BGP_NODE, &bgp_bestpath_prefix_validate_disable_cmd);
@@ -1243,7 +1268,6 @@ void install_cli_commands()
 
 	/* Install show commands */
 	install_element(ENABLE_NODE, &show_rpki_prefix_table_cmd);
-	//TODO: make this work again!
 	install_element(ENABLE_NODE, &show_rpki_cache_connection_cmd);
 
 	/* Install debug commands */
