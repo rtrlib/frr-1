@@ -932,6 +932,27 @@ DEFUN (show_rpki_prefix_table,
 	return CMD_SUCCESS;
 }
 
+DEFUN (show_rpki_cache_server,
+	show_rpki_cache_server_cmd,
+	"show rpki cache-server",
+	SHOW_STR
+	RPKI_OUTPUT_STRING
+	"SHOW configured cache server")
+{
+	struct listnode *cache_node;
+	struct cache *cache;
+
+	for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node, cache)) {
+		vty_out(vty,
+			"host: %s port: %s\n",
+			cache->tr_config.tcp_config->host,
+			cache->tr_config.tcp_config->port);
+	}
+
+	return CMD_SUCCESS;
+}
+
+
 DEFUN (show_rpki_cache_connection,
     show_rpki_cache_connection_cmd,
     "show rpki cache-connection",
@@ -1168,6 +1189,7 @@ void install_cli_commands()
 	/* Install show commands */
 	install_element(ENABLE_NODE, &show_rpki_prefix_table_cmd);
 	install_element(ENABLE_NODE, &show_rpki_cache_connection_cmd);
+	install_element(ENABLE_NODE, &show_rpki_cache_server_cmd);
 
 	/* Install debug commands */
 	install_element(CONFIG_NODE, &debug_rpki_cmd);
