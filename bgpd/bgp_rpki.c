@@ -633,21 +633,20 @@ static int config_write(struct vty *vty)
 		if (rpki_debug) {
 			vty_out(vty, "debug rpki\n");
 		}
-		vty_out(vty, "! \n");
+		vty_out(vty, "!\n");
 		vty_out(vty, "rpki\n");
 		vty_out(vty, "  rpki polling_period %d \n", polling_period);
 		vty_out(vty, "  rpki timeout %d \n", timeout);
 		vty_out(vty, "  rpki initial-synchronisation-timeout %d \n",
 			initial_synchronisation_timeout);
-		vty_out(vty, "! \n");
-		for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node,
-					  cache)) {
+		for (ALL_LIST_ELEMENTS_RO(cache_list, cache_node, cache)) {
 			switch (cache->type) {
 				struct tr_tcp_config *tcp_config;
 				struct tr_ssh_config *ssh_config;
 			case TCP:
 				tcp_config = cache->tr_config.tcp_config;
-				vty_out(vty, "    rpki cache %s %s ",
+				vty_out(vty,
+					"  rpki cache %s %s ",
 					tcp_config->host,
 					tcp_config->port);
 				break;
@@ -655,7 +654,7 @@ static int config_write(struct vty *vty)
 			case SSH:
 				ssh_config = cache->tr_config.ssh_config;
 				vty_out(vty,
-					"    rpki cache %s %u %s %s %s ",
+					"  rpki cache %s %u %s %s %s ",
 					ssh_config->host,
 					ssh_config->port,
 					ssh_config->username,
@@ -673,6 +672,7 @@ static int config_write(struct vty *vty)
 
 			vty_out(vty, "preference %hhu\n", cache->preference);
 		}
+		vty_out(vty, "  exit\n");
 		return 1;
 	} else {
 		return 0;
@@ -684,7 +684,6 @@ DEFUN_NOSH (rpki,
     "rpki",
     "Enable rpki and enter rpki configuration mode\n")
 {
-	printf("foo\n");
 	vty->node = RPKI_NODE;
 	return CMD_SUCCESS;
 }
