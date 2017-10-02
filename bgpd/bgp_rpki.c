@@ -92,9 +92,9 @@ struct rpki_for_each_record_arg {
 };
 
 
-static void start(void);
+static int start(void);
 static void stop(void);
-static void reset(bool force);
+static int reset(bool force);
 static struct rtr_mgr_group* get_connected_group(void);
 static void print_prefix_table(struct vty *vty);
 static void install_cli_commands(void);
@@ -321,23 +321,33 @@ static int bgp_rpki_module_init(void)
 	return 0;
 }
 
-static void start(void)
+static int start(void)
 {
 	unsigned int waiting_time = 0;
+	int ret;
 	if (list_isempty(cache_list)) {
 		RPKI_DEBUG(
 			"No caches were found in config. Prefix validation is off.");
-		return;
+		return ERROR;
 	}
 	RPKI_DEBUG("Init rtr_mgr.");
 	int groups_len = listcount(cache_list);
 	struct rtr_mgr_group *groups = get_groups();
 
-	rtr_mgr_init(&rtr_config, groups, groups_len, polling_period, expire_interval,
-		     retry_interval, NULL, NULL, NULL, NULL);
+	ret = rtr_mgr_init(&rtr_config, groups, groups_len, polling_period,
+		     expire_interval, retry_interval, NULL, NULL, NULL, NULL);
+	if (ret == RTR_ERROR) {
+		RPKI_DEBUG("Init rtr_mgr failed.");
+		return ERROR;
+	}
 
 	RPKI_DEBUG("Starting rtr_mgr.");
-	rtr_mgr_start(rtr_config);
+	ret = rtr_mgr_start(rtr_config);
+	if (ret == RTR_ERROR) {
+		RPKI_DEBUG("Starting rtr_mgr failed.");
+		rtr_mgr_free(rtr_config);
+		return ERROR;
+	}
 	rtr_is_running = 1;
 	RPKI_DEBUG("Waiting for rtr connection to synchronize.");
 	while (waiting_time++ <= initial_synchronisation_timeout) {
@@ -354,6 +364,8 @@ static void start(void)
 	}
 
 	XFREE(MTYPE_BGP_RPKI_CACHE_GROUP, groups);
+
+	return SUCCESS;
 }
 
 void stop(void)
@@ -365,17 +377,17 @@ void stop(void)
 	}
 }
 
-void reset(bool force)
+int reset(bool force)
 {
 	if (rtr_is_running && !force) {
-		return;
+		return SUCCESS;
 	}
 	RPKI_DEBUG("Resetting RPKI Session");
 	stop();
-	start();
+	return start();
 }
 
-struct rtr_mgr_group* get_connected_group()
+struct rtr_mgr_group* get_connected_group(void)
 {
 	if (list_isempty(cache_list)) {
 		return NULL;
@@ -695,7 +707,10 @@ DEFUN (bgp_rpki_start,
        "start rpki support\n")
 {
 	if (!is_running()) {
-		start();
+		if (start() == ERROR) {
+			RPKI_DEBUG("RPKI failed to start");
+			return CMD_WARNING;
+		}
 	}
 	return CMD_SUCCESS;
 }
@@ -862,19 +877,11 @@ DEFPY (rpki_cache,
 #endif
 	} else { // use tcp connection
 		return_value = add_tcp_cache(cache, tcpport, preference);
-		vty_out(vty,
-			"TEMPORARY RPKI DBUGMSG: Added TCP cache to group\n");
 	}
 
 	if (return_value == ERROR) {
-		vty_out(vty,
-			"Could not create new rpki cache because "
-			"of memory allocation error\n");
+		vty_out(vty, "Could not create new rpki cache\n");
 		return CMD_WARNING;
-	}
-
-	if (!is_running()) {
-		//rpki_start();
 	}
 
 	return CMD_SUCCESS;
@@ -897,7 +904,11 @@ DEFPY (no_rpki_cache,
 
 	if (rtr_is_running) {
 		if (rtr_mgr_remove_group(rtr_config, preference) == RTR_ERROR) {
-			vty_out(vty, "Could not remove cache %ld\n", preference);
+			vty_out(vty, "Could not remove cache %ld", preference);
+			if (listcount(cache_list) == 1) {
+				vty_out(vty, " because it is the last cache");
+			}
+			vty_out(vty, "\n");
 			return CMD_WARNING;
 		}
 	}
@@ -1019,9 +1030,10 @@ DEFUN_NOSH (rpki_exit,
 	    "exit",
 	    "Exit rpki configuration and restart rpki session")
 {
-	reset(false);
+	int ret = reset(false);
+
 	vty->node = CONFIG_NODE;
-	return CMD_SUCCESS;
+	return ret == SUCCESS ? CMD_SUCCESS : CMD_WARNING;
 }
 
 DEFUN_NOSH (rpki_quit,
@@ -1037,10 +1049,10 @@ DEFUN_NOSH (rpki_end,
 	    "end",
 	    "End rpki configuration, restart rpki session and change to enable mode.")
 {
-	reset(false);
+	int ret = reset(false);
 	vty_config_unlock(vty);
 	vty->node = ENABLE_NODE;
-	return CMD_SUCCESS;
+	return ret == SUCCESS ? CMD_SUCCESS : CMD_WARNING;
 }
 
 DEFUN (rpki_reset,
@@ -1049,8 +1061,7 @@ DEFUN (rpki_reset,
        RPKI_OUTPUT_STRING
        "reset rpki\n")
 {
-	reset(true);
-	return CMD_SUCCESS;
+	return reset(true) == SUCCESS ? CMD_SUCCESS : CMD_WARNING;
 }
 
 DEFUN (debug_rpki,
