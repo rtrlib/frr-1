@@ -304,8 +304,6 @@ struct bgp {
 #define BGP_FLAG_SHOW_HOSTNAME            (1 << 19)
 #define BGP_FLAG_GR_PRESERVE_FWD          (1 << 20)
 #define BGP_FLAG_GRACEFUL_SHUTDOWN        (1 << 21)
-#define BGP_FLAG_ALLOW_INVALID         (1 << 22)
-#define BGP_FLAG_VALIDATE_DISABLE         (1 << 23)
 
 	/* BGP Per AF flags */
 	u_int16_t af_flags[AFI_MAX][SAFI_MAX];
