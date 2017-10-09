@@ -206,9 +206,6 @@ static struct rtr_socket *create_rtr_socket(struct tr_socket *tr_socket)
 {
 	struct rtr_socket *rtr_socket =
 		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct rtr_socket));
-	if (rtr_socket == NULL) {
-		return NULL;
-	}
 	rtr_socket->tr_socket = tr_socket;
 	return rtr_socket;
 }
@@ -244,17 +241,13 @@ struct rtr_mgr_group *get_groups()
 	struct rtr_mgr_group *rtr_mgr_groups;
 	struct cache *cache;
 
-	int number_of_groups = listcount(cache_list);
-	if (number_of_groups == 0) {
+	int group_count = listcount(cache_list);
+	if (group_count == 0) {
 		return NULL;
 	}
 
-	if ((rtr_mgr_groups =
-		     XMALLOC(MTYPE_BGP_RPKI_CACHE_GROUP,
-			     number_of_groups * sizeof(struct rtr_mgr_group)))
-	    == NULL) {
-		return NULL;
-	}
+	rtr_mgr_groups = XMALLOC(MTYPE_BGP_RPKI_CACHE_GROUP,
+				 group_count * sizeof(struct rtr_mgr_group));
 
 	size_t i = 0;
 
@@ -404,7 +397,7 @@ void print_prefix_table(struct vty *vty)
 	unsigned int number_of_ipv6_prefixes = 0;
 	arg.vty = vty;
 	struct rtr_mgr_group* group = get_connected_group();
-	if (!group) {
+	if (group == NULL) {
 		return;
 	}
 	struct pfx_table *pfx_table = group->sockets[0]->pfx_table;
@@ -536,26 +529,19 @@ static int add_tcp_cache(const char *host,
 			 const char *port,
 			 const uint8_t preference)
 {
+	struct rtr_socket *rtr_socket;
 	struct tr_tcp_config *tcp_config =
 		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_tcp_config));
-	struct tr_socket *tr_socket;
-	struct rtr_socket *rtr_socket;
-	struct cache *cache = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct cache));
-	if ((tr_socket =
-		     XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket)))
-	    == NULL) {
-		return ERROR;
-	}
+	struct tr_socket *tr_socket =
+		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket));
+	struct cache *cache =
+		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct cache));
 
 	tcp_config->host = XSTRDUP(MTYPE_BGP_RPKI_CACHE, host);
 	tcp_config->port = XSTRDUP(MTYPE_BGP_RPKI_CACHE, port);
 	tcp_config->bindaddr = NULL;
 
-	//tr_tcp_init(tcp_config, tr_socket);
-
-	if ((rtr_socket = create_rtr_socket(tr_socket)) == NULL) {
-		return ERROR;
-	}
+	rtr_socket = create_rtr_socket(tr_socket);
 
 	cache->type = TCP;
 	cache->tr_socket = tr_socket;
@@ -578,13 +564,11 @@ static int add_ssh_cache(const char *host,
 
 	struct tr_ssh_config *ssh_config =
 		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_ssh_config));
-	struct cache *cache = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct cache));
-	struct tr_socket *tr_socket;
+	struct cache *cache =
+		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct cache));
+	struct tr_socket *tr_socket =
+		XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket));
 	struct rtr_socket *rtr_socket;
-	if ((tr_socket = XMALLOC(MTYPE_BGP_RPKI_CACHE, sizeof(struct tr_socket)))
-	    == NULL) {
-		return ERROR;
-	}
 
 	ssh_config->port = port;
 	ssh_config->host = XSTRDUP(MTYPE_BGP_RPKI_CACHE, host);
@@ -593,12 +577,10 @@ static int add_ssh_cache(const char *host,
 	ssh_config->username = XSTRDUP(MTYPE_BGP_RPKI_CACHE, username);
 	ssh_config->client_privkey_path = XSTRDUP(
 			MTYPE_BGP_RPKI_CACHE, client_privkey_path);
-	ssh_config->server_hostkey_path = XSTRDUP(MTYPE_BGP_RPKI_CACHE, server_pubkey_path);
+	ssh_config->server_hostkey_path =
+		XSTRDUP(MTYPE_BGP_RPKI_CACHE, server_pubkey_path);
 
-	//tr_ssh_init(ssh_config, tr_socket);
-	if ((rtr_socket = create_rtr_socket(tr_socket)) == NULL) {
-		return ERROR;
-	}
+	rtr_socket = create_rtr_socket(tr_socket);
 
 	cache->type = SSH;
 	cache->tr_socket = tr_socket;
