@@ -171,15 +171,12 @@ struct bgp_info {
 #define BGP_ROUTE_NORMAL       0
 #define BGP_ROUTE_STATIC       1
 #define BGP_ROUTE_AGGREGATE    2
-#define BGP_ROUTE_REDISTRIBUTE 3
+#define BGP_ROUTE_REDISTRIBUTE 3 
 #ifdef ENABLE_BGP_VNC
-# define BGP_ROUTE_RFP          4
+# define BGP_ROUTE_RFP          4 
 #endif
 
 	u_short instance;
-
-	/*RPKI Route origin validation status*/
-	u_char rpki_validation_status;
 
 	/* Addpath identifiers */
 	u_int32_t addpath_rx_id;
@@ -190,8 +187,6 @@ struct bgp_info {
 struct bgp_info_pair {
 	struct bgp_info *old;
 	struct bgp_info *new;
-  /*RPKI Route origin validation status*/
-  u_char rpki_validation_status;
 };
 
 /* BGP static route configuration. */
