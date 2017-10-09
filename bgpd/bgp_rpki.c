@@ -297,7 +297,7 @@ static int bgp_rpki_init(struct thread_master *master)
 static int bgp_rpki_fini()
 {
 	stop();
-	list_delete(cache_list);
+	list_delete_and_null(&cache_list);
 
 	return 0;
 }
