@@ -53,7 +53,7 @@ In a nutshell, the current implementation provides the following features
 @itemize @bullet
 @item The BGP router can connect to one or more RPKI cache servers to
 receive validated prefix data. Advanced failover can be implemented by
-server groups with different preference values.
+server sockets with different preference values.
 
 @item If no connection to an RPKI cache server can be established after a
 pre-defined timeout, the router will process routes without prefix origin
@@ -92,15 +92,14 @@ changes of the rpki configuration will not come into effect before the rpki
 configuration mode is exited.
 
 Please note that executing this command alone does not activate prefix
-validation. You need to add at least one cache group including at least one
+validation. You need to add at least one socket including at least one
 reachable cache server.
 @end deffn
 
 @node Configuring RPKI/RTR Cache Servers
 @subsection Configuring RPKI/RTR Cache Servers
 
-The following commands are independent of a specific cache server or group
-of cache servers.
+The following commands are independent of a specific cache server.
 
 @deffn {RPKI Command} {rpki polling_period <1-3600>} {}
 @deffnx {RPKI Command} {no rpki polling_period} {}
@@ -131,23 +130,13 @@ The default value is 30 seconds.
 
 @noindent The following commands configure one or multiple cache servers.
 
-@deffn {RPKI Command} {rpki group <0-4,294,967,296>} {}
-@deffnx {RPKI Command} {no rpki group} {}
-Create a group of one or multiple cache servers. Each group is identified
-by a preference. The cache server of the group with the lowest preference will be
-chosen first for establishing an RPKI/RTR connection. If no cache server
-within the chosen group is reachable, the cache servers of the group with
-the next lowest preference will be selected.
-
-Deleting the cache group removes all associated cache servers and
-terminates the existing connection.
-@end deffn
-
-@deffn {RPKI Group Command} {rpki cache (@var{A.B.C.D}|@var{WORD}) @var{PORT} [@var{SSH_USERNAME}] [@var{SSH_PRIVKEY_PATH}] [@var{SSH_PUBKEY_PATH}] [@var{KNOWN_HOSTS_PATH}]} {}
-@deffnx {RPKI Group Command} {no rpki cache (@var{A.B.C.D}|@var{WORD}) [@var{PORT}]} {}
-Add a cache server to the cache group. By default, the connection between
+@deffn {RPKI Socket Command} {rpki cache (@var{A.B.C.D}|@var{WORD}) @var{PORT} [@var{SSH_USERNAME}] [@var{SSH_PRIVKEY_PATH}] [@var{SSH_PUBKEY_PATH}] [@var{KNOWN_HOSTS_PATH}]} {}
+@deffnx {RPKI Socket Command} {no rpki cache (@var{A.B.C.D}|@var{WORD}) [@var{PORT}]} {}
+Add a cache server to the socket. By default, the connection between
 router and cache server is based on plain TCP. Protecting the connection
 between router and cache server by SSH is optional.
+Deleting a socket removes all associated cache servers and
+terminates the existing connection.
 @end deffn
 
 @table @code
@@ -260,7 +249,6 @@ debug rpki
 enable-rpki
  rpki polling_period 1000
  rpki timeout 10
- rpki group 1
   ! SSH Example:
   rpki cache rpki.realmv6.org 22 rtr-ssh ./ssh_key/id_rsa ./ssh_key/id_rsa.pub
   ! TCP Example:
