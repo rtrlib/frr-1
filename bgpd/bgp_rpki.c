@@ -425,8 +425,7 @@ static int rpki_validate_prefix(struct peer *peer, struct attr *attr,
 	char buf[BUFSIZ];
 	const char *prefix_string;
 
-	if (!is_synchronized()
-	    || bgp_flag_check(peer->bgp, BGP_FLAG_VALIDATE_DISABLE)) {
+	if (!is_synchronized()) {
 		return 0;
 	}
 
