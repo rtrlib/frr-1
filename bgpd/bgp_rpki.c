@@ -261,6 +261,7 @@ struct rtr_mgr_group *get_groups()
 		} else {
 			tr_ssh_init(cache->tr_config.ssh_config, cache->tr_socket);
 		}
+		i++;
 	}
 
 	return rtr_mgr_groups;
