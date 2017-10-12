@@ -82,18 +82,14 @@ re-evaluated.
 
 @node Enabling RPKI
 @subsection Enabling RPKI
-@deffn {Command} {enable-rpki} {}
-This command enters the RPKI configuration mode. All commands that start
+@deffn {Command} {rpki} {}
+This command enters the RPKI configuration mode. Most commands that start
 with @command{rpki} can only be used in this mode.
 
-When it is used in a telnet session, leaving of this mode will cause a
-restart of the rpki session with the current settings. This means that any
-changes of the rpki configuration will not come into effect before the rpki
-configuration mode is exited.
+When it is used in a telnet session, leaving of this mode cause rpki to be initialized.
 
 Please note that executing this command alone does not activate prefix
-validation. You need to add at least one socket including at least one
-reachable cache server.
+validation. You need to add at least one reachable cache server.
 @end deffn
 
 @node Configuring RPKI/RTR Cache Servers
@@ -165,26 +161,6 @@ configuration of the operating system environment, usually
 @node Validating BGP Updates
 @subsection Validating BGP Updates
 
-@deffn {BGP Command} {bgp bestpath prefix-validate disallow-invalid} {}
-@deffnx {BGP Command} {no bgp bestpath prefix-validate disallow-invalid} {}
-Exclude all invalid prefixes from the best path selection.
-
-By default, invalid prefixes will be considered during the best path
-selection process.
-@end deffn
-
-@deffn {BGP Command} {bgp bestpath prefix-validate disable} {}
-@deffnx {BGP Command} {no bgp bestpath prefix-validate disable} {}
-Disable the validation of prefixes, which have been received via BGP. The
-router will still connect to the cache server and retrieve validation
-information. However, the data is not used in any way. This configuration
-is useful for configuration testing of the RPKI/RTR protocol.
-
-By default, routes are validated based on information retrieved from cache
-servers. Note that this validation does not influence best path selection,
-by default.
-@end deffn
-
 @deffn {Route Map Command} {match rpki @{notfound|invalid|valid@}} {}
 @deffnx {Route Map Command} {no match rpki @{notfound|invalid|valid@}} {}
 Create a clause for a route map to match prefixes with the specified RPKI state.
@@ -246,13 +222,14 @@ debug bgp updates
 debug bgp keepalives
 debug rpki
 !
-enable-rpki
+rpki
  rpki polling_period 1000
  rpki timeout 10
   ! SSH Example:
   rpki cache rpki.realmv6.org 22 rtr-ssh ./ssh_key/id_rsa ./ssh_key/id_rsa.pub
   ! TCP Example:
   rpki cache rpki-validator.realmv6.org 42420
+  exit
 !
 router bgp 60001
  bgp router-id 141.22.28.223
