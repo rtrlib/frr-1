@@ -688,6 +688,9 @@ DEFUN (bgp_rpki_start,
        RPKI_OUTPUT_STRING
        "start rpki support\n")
 {
+	if (listcount(cache_list) == 0) {
+		vty_out(vty, "Could not start rpki because no caches are configured\n");
+	}
 	if (!is_running()) {
 		if (start() == ERROR) {
 			RPKI_DEBUG("RPKI failed to start");
