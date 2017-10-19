@@ -1,12 +1,12 @@
 /* BGP RPKI
  * Copyright (C) 2013 Michael Mester (m.mester@fu-berlin.de)
  * Nils Bahrs (?)
- * Fabian Holler (?)
+ * Fabian Holler (mail@fholler.de)
  * Andreas Reuter (andreas.reuter@fu-berlin.de)
  * Marcel Röthke (marcel.roethke@haw-hamburg.de)
  * Colin Sames (colin.sames@haw-hamburg.de)
  *
- * Freie Universität Berlin ? - 2017
+ * Freie Universität Berlin 2012 - 2017
  * Hamburg University of Applied Sciences 2012 - 2017
  *
  * Mailinglist of the RTRlib: rtrlib@googlegroups.com
