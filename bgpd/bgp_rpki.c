@@ -1,5 +1,12 @@
 /* BGP RPKI
  * Copyright (C) 2013 Michael Mester (m.mester@fu-berlin.de)
+ * Nils Bahrs (nils.bars@haw-hamburg.de)
+ * Fabian Holler (inet@fholler.de)
+ * Andreas Reuter (andreas.reuter@fu-berlin.de)
+ * Marcel Röthke (marcel.roethke@haw-hamburg.de)
+ * Colin Sames (colin.sames@haw-hamburg.de)
+ *
+ * Mailinglist of the RTRlib: rtrlib@googlegroups.com
  *
  * This file is part of Quagga
  *
