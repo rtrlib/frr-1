@@ -1,32 +1,23 @@
-/* BGP RPKI
- * Copyright (C) 2013 Michael Mester (m.mester@fu-berlin.de)
- * Nils Bahrs (?)
- * Fabian Holler (mail@fholler.de)
- * Andreas Reuter (andreas.reuter@fu-berlin.de)
- * Marcel Röthke (marcel.roethke@haw-hamburg.de)
- * Colin Sames (colin.sames@haw-hamburg.de)
+/*
+ * BGP RPKI
+ * Copyright (C) 2013 Michael Mester (m.mester@fu-berlin.de), for FU Berlin
+ * Copyright (C) 2014-2017 Andreas Reuter (andreas.reuter@fu-berlin.de), for FU Berlin
+ * Copyright (C) 2016-2017 Colin Sames (colin.sames@haw-hamburg.de), for HAW Hamburg
+ * Copyright (C) 2017 Marcel Röthke (marcel.roethke@haw-hamburg.de), for HAW Hamburg
  *
- * Freie Universität Berlin 2012 - 2017
- * Hamburg University of Applied Sciences 2012 - 2017
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
  *
- * Mailinglist of the RTRlib: rtrlib@googlegroups.com
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * This file is part of Quagga
- *
- * Quagga is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2, or (at your option) any
- * later version.
- *
- * Quagga is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Quagga; see the file COPYING.  If not, write to the Free
- * Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
- * 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License along
+ * with this program; see the file COPYING; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
 #include <zebra.h>
