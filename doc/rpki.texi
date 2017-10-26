@@ -1,5 +1,5 @@
 @c -*-texinfo-*-
-@c This is part of the Quagga Manual.
+@c This is part of the FRRouting Manual.
 @c @value{COPYRIGHT_STR}
 @c See file quagga.texi for copying conditions.
 @node Prefix Origin Validation Using RPKI
@@ -14,7 +14,7 @@ cryptographic data (so called Route Origin Authorization, or short
 @acronym{ROA}, objects) will be performed by trusted cache servers. The
 RPKI/RTR protocol defines a standard mechanism to maintain the exchange of
 the prefix/origin AS mapping between the cache server and routers.
-In combination with a  BGP prefix origin validation scheme a router is able
+In combination with a  BGP Prefix Origin Validation scheme a router is able
 to verify received BGP updates without suffering from cryptographic
 complexity.
 
@@ -22,7 +22,7 @@ complexity.
 The RPKI/RTR protocol is defined in @cite{RFC6810, The Resource Public Key
 Infrastructure (RPKI) to Router Protocol}, and the validation scheme in
 @cite{RFC6811, BGP Prefix Origin Validation}. The current version of Prefix
-Origin Validation in Quagga implements both RFCs.
+Origin Validation in FRRouting implements both RFCs.
 
 For a more detailed but still easy-to-read background, we suggest the
 following two articles:
@@ -52,8 +52,9 @@ Journal, Volume 12, No.1, 2009.}
 In a nutshell, the current implementation provides the following features
 @itemize @bullet
 @item The BGP router can connect to one or more RPKI cache servers to
-receive validated prefix data. Advanced failover can be implemented by
-server sockets with different preference values.
+receive validated prefix to origin AS mappings.
+Advanced failover can be implemented by server sockets with different
+preference values.
 
 @item If no connection to an RPKI cache server can be established after a
 pre-defined timeout, the router will process routes without prefix origin
@@ -74,8 +75,7 @@ state. This allows the creation of local policies, which handle BGP routes
 based on the outcome of the Prefix Origin Validation.
 
 @item When the router receives updated validation information from the RPKI
-cache server, all affected routes in the local routing table will be
-re-evaluated.
+cache server, all routes in the local routing table will be re-evaluated.
 
 @end itemize
 
@@ -83,13 +83,13 @@ re-evaluated.
 @node Enabling RPKI
 @subsection Enabling RPKI
 @deffn {Command} {rpki} {}
-This command enters the RPKI configuration mode. Most commands that start
+This command enables the RPKI configuration mode. Most commands that start
 with @command{rpki} can only be used in this mode.
 
 When it is used in a telnet session, leaving of this mode cause rpki to be initialized.
 
-Please note that executing this command alone does not activate prefix
-validation. You need to add at least one reachable cache server.
+Executing this command alone does not activate prefix
+validation. You need to configure at least one reachable cache server (see next section).
 @end deffn
 
 @node Configuring RPKI/RTR Cache Servers
@@ -109,7 +109,7 @@ The default value is 300 seconds.
 @deffnx {RPKI Command} {no rpki timeout} {}
 Set the number of seconds the router waits for the cache reply. If the
 cache server is not replying within this time period, the router deletes
-all received prefix records from the RPKI table.
+all received prefix records from the prefix table.
 
 The default value is 600 seconds.
 @end deffn
@@ -131,7 +131,7 @@ The default value is 30 seconds.
 Add a cache server to the socket. By default, the connection between
 router and cache server is based on plain TCP. Protecting the connection
 between router and cache server by SSH is optional.
-Deleting a socket removes all associated cache servers and
+Deleting a socket removes the associated cache server and
 terminates the existing connection.
 @end deffn
 
@@ -201,13 +201,13 @@ Enable or disable debugging output for RPKI.
 @subsection Displaying RPKI
 
 @deffn {Command} {show rpki prefix-table} {}
-Display all prefix data which have been received from the cache
-servers and stored in the router. Based on this data, the router validates
-BGP Updates.
+Display all validated prefix to origin AS mappings/records which have been
+received from the cache servers and stored in the router. Based on this data,
+the router validates BGP Updates.
 @end deffn
 
 @deffn {Command} {show rpki cache-connection} {}
-Display all configured cache servers.
+Display all configured cache servers, whether active or not.
 @end deffn
 
 @node RPKI Configuration Example
