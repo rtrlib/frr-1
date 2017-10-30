@@ -5,6 +5,8 @@
  * Copyright (C) 2016-2017 Colin Sames (colin.sames@haw-hamburg.de), for HAW Hamburg
  * Copyright (C) 2017 Marcel Röthke (marcel.roethke@haw-hamburg.de), for HAW Hamburg
  *
+ * This file is part of FRRouting.
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
  * Software Foundation; either version 2 of the License, or (at your option)
