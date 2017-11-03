@@ -1,7 +1,7 @@
 @c -*-texinfo-*-
 @c This is part of the FRR Manual.
 @c @value{COPYRIGHT_STR}
-@c See file quagga.texi for copying conditions.
+@c See file frr.texi for copying conditions.
 @node Prefix Origin Validation Using RPKI
 @section Prefix Origin Validation Using RPKI
 
