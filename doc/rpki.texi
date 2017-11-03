@@ -123,8 +123,8 @@ The default value is 30 seconds.
 
 @noindent The following commands configure one or multiple cache servers.
 
-@deffn {RPKI Socket Command} {rpki cache (@var{A.B.C.D}|@var{WORD}) @var{PORT} [@var{SSH_USERNAME}] [@var{SSH_PRIVKEY_PATH}] [@var{SSH_PUBKEY_PATH}] [@var{KNOWN_HOSTS_PATH}]} {}
-@deffnx {RPKI Socket Command} {no rpki cache (@var{A.B.C.D}|@var{WORD}) [@var{PORT}]} {}
+@deffn {RPKI Socket Command} {rpki cache (@var{A.B.C.D}|@var{WORD}) @var{PORT} [@var{SSH_USERNAME}] [@var{SSH_PRIVKEY_PATH}] [@var{SSH_PUBKEY_PATH}] [@var{KNOWN_HOSTS_PATH}] @var{PREFERENCE}} {}
+@deffnx {RPKI Socket Command} {no rpki cache (@var{A.B.C.D}|@var{WORD}) [@var{PORT}] @var{PREFERENCE}} {}
 Add a cache server to the socket. By default, the connection between
 router and cache server is based on plain TCP. Protecting the connection
 between router and cache server by SSH is optional.
@@ -223,9 +223,9 @@ rpki
  rpki polling_period 1000
  rpki timeout 10
   ! SSH Example:
-  rpki cache rpki.realmv6.org 22 rtr-ssh ./ssh_key/id_rsa ./ssh_key/id_rsa.pub
+  rpki cache example.com 22 rtr-ssh ./ssh_key/id_rsa ./ssh_key/id_rsa.pub preference 1
   ! TCP Example:
-  rpki cache rpki-validator.realmv6.org 42420
+  rpki cache rpki-validator.realmv6.org 8282 preference 2
   exit
 !
 router bgp 60001
